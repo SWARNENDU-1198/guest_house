@@ -60,3 +60,14 @@
 - `POST /payments/cash`, `POST /payments/:id/refund` (+ credit note `CN-…`), `GET /payments`, `GET /payments/me`,
   `GET /receipts/me`, `GET /receipts/:id`, `GET /receipts/:id/pdf` (pdfkit, rendered from the frozen snapshot).
 - Free bookings get a ₹0 confirmation slip (`SLIP-…`).
+
+## v0.7.0 — Invoices and 3-day reminders
+- Invoices `INV-YYYY-NNNNNN` for pay-later stays (`kind: stay`) and front-desk extra charges (`kind: charges`, extended while unpaid).
+- `sendRemindersJob` (hourly; `REMINDER_SCHEDULE` to change): unpaid invoices with `nextReminderAt <= now` get an email with a pay link,
+  a `reminders` doc, `remindersSent++` and `nextReminderAt += reminderEveryDays` in one transaction (never double-sends).
+  When `remindersSent` reaches `maxReminders` (3), the next due run marks the invoice `overdue`, emails Accounts, and the user is blocked
+  (`OVERDUE_INVOICE`) from booking and queueing until paid or an admin overrides.
+- `reminderUnit: 'minutes'` setting for live demos.
+- `GET /invoices/me`, `GET /invoices/:id` (+ reminder history), `GET /invoices/:id/pdf`, `POST /frontdesk/bookings/:id/charges`,
+  `GET /admin/invoices` (with `ageDays`), `POST /admin/invoices/:id/remind`, `POST /admin/invoices/:id/void`,
+  `POST /admin/users/:uid/override-overdue`. Partial payments leave a balance; overpaying is refused.

@@ -6,7 +6,7 @@ const env = (name, fallback) => {
   return v === undefined || v === '' ? fallback : v;
 };
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.7.0';
 
 export const ROLES = ['guest', 'official', 'frontdesk', 'accounts', 'admin'];
 export const STAFF_ROLES = ['frontdesk', 'accounts', 'admin'];

@@ -10,13 +10,14 @@ export async function prepareInvoice(tx) {
   const year = yearIST();
   const seq = await readSeq(tx, `invoices-${year}`);
   return {
-    write({ actor, userId, bookingId = null, lines, settings, note = null }) {
+    write({ actor, userId, bookingId = null, lines, settings, note = null, kind = 'stay' }) {
       seq.commit();
       const ref = db.collection('invoices').doc();
       const totalPaise = lines.reduce((t, l) => t + l.amountPaise, 0);
       const now = Date.now();
       const invoice = {
         number: formatNumber('INV', year, seq.value),
+        kind,
         userId,
         bookingId,
         lines,

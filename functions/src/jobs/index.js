@@ -1,5 +1,6 @@
 import { expireHolds } from './expireHolds.js';
 import { processQueue } from './processQueue.js';
+import { sendReminders } from './sendReminders.js';
 
 export const JOBS = {
   expireHolds: async () => {
@@ -7,4 +8,5 @@ export const JOBS = {
     return { checked: r.checked, expired: r.expired, offers: r.offers.length };
   },
   processQueue: () => processQueue(),
+  sendReminders: () => sendReminders(),
 };

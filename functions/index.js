@@ -4,6 +4,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { app } from './src/app.js';
 import { processQueue } from './src/jobs/processQueue.js';
+import { sendReminders } from './src/jobs/sendReminders.js';
 
 setGlobalOptions({ region: 'asia-south1', maxInstances: 10 });
 
@@ -18,3 +19,5 @@ const job = (schedule, fn) => onSchedule({ schedule, timeZone: 'Asia/Kolkata', s
 });
 
 export const processQueueJob = job('every 1 minutes', processQueue);
+// Hourly in production; set REMINDER_SCHEDULE='every 1 minutes' at deploy time for a live demo.
+export const sendRemindersJob = job(process.env.REMINDER_SCHEDULE || 'every 60 minutes', sendReminders);
