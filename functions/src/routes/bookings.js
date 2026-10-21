@@ -12,6 +12,7 @@ import { nightsBetween, diffDays } from '../lib/dates.js';
 import { nightRef } from '../lib/nights.js';
 import { prepareRelease } from '../lib/release.js';
 import { getSettings } from '../lib/settings.js';
+import { notifyOffers } from '../lib/queue.js';
 
 export const router = Router();
 
@@ -88,7 +89,7 @@ router.post(
       const owned = nightSnaps.filter((s) => s.exists && s.data().bookingId === ref.id).map((s) => s.data().date);
       const refund = refundDue({ booking: b, settings });
       const room = await tx.get(db.collection('rooms').doc(b.roomId));
-      const rel = await prepareRelease(tx, { room: { id: b.roomId, ...room.data() }, dates: owned, excludeUserId: b.userId });
+      const rel = await prepareRelease(tx, { room: { id: b.roomId, ...room.data() }, dates: owned });
       const release = rel.apply(actorFrom(req));
       const changes = {
         state: 'cancelled',
@@ -103,7 +104,8 @@ router.post(
       writeAudit(tx, actorFrom(req), { action: 'booking.cancel', entity: 'booking', entityId: ref.id, before: { state: b.state }, after: { state: 'cancelled', refundDuePaise: refund.amountPaise }, reason: req.body.reason });
       return { refund, offers: release.offers };
     });
-    res.json({ booking: docJSON(await ref.get()), refundDuePaise: result.refund.amountPaise, refundPercent: result.refund.percent, offers: result.offers.length });
+    await notifyOffers(result.offers);
+    res.json({ booking: docJSON(await ref.get()), refundDuePaise: result.refund.amountPaise, refundPercent: result.refund.percent, offeredToQueue: result.offers.length > 0 });
   }),
 );
 
@@ -167,7 +169,7 @@ router.patch(
       const keep = new Set(next.roomId === b.roomId ? newDates : []);
       const toFree = oldSnaps.filter((s) => s.exists && s.data().bookingId === ref.id && !keep.has(s.data().date)).map((s) => s.data().date);
       const oldRoom = next.roomId === b.roomId ? roomSnap : await tx.get(db.collection('rooms').doc(b.roomId));
-      const rel = await prepareRelease(tx, { room: { id: b.roomId, ...oldRoom.data() }, dates: toFree });
+      const rel = await prepareRelease(tx, { room: { id: b.roomId, ...oldRoom.data() }, dates: toFree, reservedDates: next.roomId === b.roomId ? newDates : [] });
       const release = rel.apply(actor);
       const state = b.state === 'held' ? 'held' : 'booked';
       target.refs.forEach((r, i) => {
@@ -198,7 +200,8 @@ router.patch(
       });
       return { offers: release.offers, balanceDuePaise: Math.max(0, changes.amountPaise - (b.paidPaise ?? 0)) };
     });
-    res.json({ booking: docJSON(await ref.get()), balanceDuePaise: result.balanceDuePaise, offers: result.offers.length });
+    await notifyOffers(result.offers);
+    res.json({ booking: docJSON(await ref.get()), balanceDuePaise: result.balanceDuePaise, offeredToQueue: result.offers.length > 0 });
   }),
 );
 

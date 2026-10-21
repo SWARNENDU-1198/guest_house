@@ -36,3 +36,15 @@
   `POST /bookings/:id/cancel` (refund due per policy), `POST /admin/bookings` (override flags + reason), `PATCH /admin/bookings/:id`.
 - `Idempotency-Key` header on booking creation. Scheduled `expireHoldsJob` (every minute).
 - Race test: 50 parallel requests → exactly 1 booking.
+
+## v0.5.0 — First-come queue and offers
+- `POST /queue` (seq from `counters/queue`, server `requestedAt`, one active entry per user per overlapping range),
+  `GET /queue/me` (computed position + offer), `POST /queue/:id/accept|decline`, `DELETE /queue/:id`,
+  `GET /admin/queue`, `POST /admin/queue/:id/move` (reason mandatory, audited, user emailed).
+- `lib/release.js`: every path that frees nights (cancel, hold/offer expiry, unblock, admin move, decline) offers them to the
+  lowest-seq fitting entry in the same transaction; nights are converted to `held` for that user, never shown free.
+- Offers: held booking for `offerMinutes` (30), entry `offered`, email + in-app (listen to `queue/{id}`).
+- `processQueueJob` (every minute): expire holds/offers → next in line, expire stale entries, safety sweep.
+- Officials priority (`settings.officialsQueuePriority`) orders by [isOfficial desc, seq asc].
+- `POST /admin/jobs/:name/run` (admin) and `POST /internal/jobs/:name` (`X-Cron-Secret`, for a free Node host + cron).
+- Mailer (`lib/mailer.js`): JSON transport by default; SMTP or Gmail app password via env.

@@ -9,6 +9,7 @@ import { docJSON } from '../lib/serialize.js';
 import { nightsBetween, diffDays } from '../lib/dates.js';
 import { nightRef } from '../lib/nights.js';
 import { prepareRelease } from '../lib/release.js';
+import { notifyOffers } from '../lib/queue.js';
 
 export const router = Router();
 
@@ -169,6 +170,7 @@ router.delete(
       writeAudit(tx, actorFrom(req), { action: 'room.unblock', entity: 'room', entityId: roomRef.id, before: { blockId: blockRef.id, from: b.from, to: b.to }, after: { offers: release.offers.length } });
       return release;
     });
-    res.json({ unblocked: true, offers: result.offers });
+    await notifyOffers(result.offers);
+    res.json({ unblocked: true, offeredToQueue: result.offers.length });
   }),
 );

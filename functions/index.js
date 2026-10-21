@@ -3,7 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { app } from './src/app.js';
-import { expireHolds } from './src/jobs/expireHolds.js';
+import { processQueue } from './src/jobs/processQueue.js';
 
 setGlobalOptions({ region: 'asia-south1', maxInstances: 10 });
 
@@ -13,4 +13,8 @@ const SECRETS = [defineSecret('SERVER_SECRET')];
 
 export const api = onRequest({ secrets: SECRETS, cors: false }, app);
 
-export const expireHoldsJob = onSchedule({ schedule: 'every 1 minutes', timeZone: 'Asia/Kolkata', secrets: SECRETS }, () => expireHolds());
+const job = (schedule, fn) => onSchedule({ schedule, timeZone: 'Asia/Kolkata', secrets: SECRETS }, async () => {
+  await fn();
+});
+
+export const processQueueJob = job('every 1 minutes', processQueue);

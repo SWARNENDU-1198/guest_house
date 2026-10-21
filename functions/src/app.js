@@ -12,6 +12,8 @@ import { router as roomsRouter } from './routes/rooms.js';
 import { router as settingsRouter } from './routes/settings.js';
 import { router as availabilityRouter } from './routes/availability.js';
 import { router as bookingsRouter } from './routes/bookings.js';
+import { router as queueRouter } from './routes/queue.js';
+import { adminJobs, cronJobs } from './routes/jobs.js';
 
 export function createApp() {
   const app = express();
@@ -44,6 +46,7 @@ export function createApp() {
 
   // Public routes
   v1.get('/health', (req, res) => res.json({ ok: true, version: VERSION }));
+  v1.use(cronJobs);
 
   // 4. auth for everything below
   v1.use(authenticate);
@@ -57,6 +60,8 @@ export function createApp() {
   v1.use(settingsRouter);
   v1.use(availabilityRouter);
   v1.use(bookingsRouter);
+  v1.use(queueRouter);
+  v1.use(adminJobs);
 
   // Cloud Functions strips the function name ("/api"), hosting rewrites do not.
   app.use(['/api/v1', '/v1'], v1);
