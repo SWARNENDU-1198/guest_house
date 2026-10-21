@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.secret.local
+*.log
+firebase-debug*.log
+firestore-debug.log
+ui-debug.log
+.runtimeconfig.json
+emulator-data/
+functions/config/test_*.pem

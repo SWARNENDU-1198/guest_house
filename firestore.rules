@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// Clients can only READ. Every write goes through the API (Admin SDK), which
+// bypasses these rules. Reads follow the data-model table in the PRD.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.get('suspended', false) != true;
+    }
+    function role() { return request.auth.token.get('role', ''); }
+    function isStaff() { return signedIn() && role() in ['frontdesk', 'accounts', 'admin']; }
+    function isAdmin() { return signedIn() && role() == 'admin'; }
+    function isAccountsOrAdmin() { return signedIn() && role() in ['accounts', 'admin']; }
+    function ownsBy(field) { return signedIn() && resource.data[field] == request.auth.uid; }
+
+    // Default: nothing readable, nothing writable.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isStaff());
+    }
+    match /officialRequests/{id} {
+      allow read: if ownsBy('uid') || isAdmin();
+    }
+
+    // Catalogue and live availability: any signed-in user.
+    match /buildings/{id} { allow read: if signedIn(); }
+    match /roomTypes/{id} { allow read: if signedIn(); }
+    match /rooms/{id} { allow read: if signedIn(); }
+    match /categories/{id} { allow read: if signedIn(); }
+    match /settings/{id} { allow read: if signedIn(); }
+    match /roomNights/{id} { allow read: if signedIn(); }
+    match /rates/{id} {
+      allow read: if signedIn();
+      match /history/{h} { allow read: if isAccountsOrAdmin(); }
+    }
+
+    match /bookings/{id} { allow read: if ownsBy('userId') || isStaff(); }
+    match /queue/{id} { allow read: if ownsBy('userId') || isStaff(); }
+    match /payments/{id} { allow read: if ownsBy('userId') || isAccountsOrAdmin(); }
+    match /invoices/{id} { allow read: if ownsBy('userId') || isAccountsOrAdmin(); }
+    match /receipts/{id} { allow read: if ownsBy('userId') || isStaff(); }
+    match /reminders/{id} { allow read: if isAccountsOrAdmin(); }
+    match /auditLogs/{id} {
+      allow read: if isAdmin()
+        || (signedIn() && role() == 'accounts' && resource.data.entity == 'payment');
+    }
+
+    // aadhaarRefs, counters, webhookEvents, idempotencyKeys: backend only
+    // (covered by the default deny above).
+  }
+}
