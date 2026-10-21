@@ -9,3 +9,13 @@
 - `firestore.rules`: no client writes anywhere; reads per data model.
 - Seed script: admin account, 5 categories, `settings/global`.
 - Endpoints: `GET /health`, `POST /auth/bootstrap`, `GET /me`, `POST /admin/users/:uid/role`.
+
+## v0.2.0 — Users, Aadhaar verification, officials
+- `lib/aadhaarQr.js`: decimal → bytes → gunzip → 255-delimited fields; V1 and V2+ layouts;
+  RSA-SHA256 signature checked against the UIDAI certificate (`functions/config/uidai_cert.pem`
+  or `UIDAI_CERT_PATH`), fail-closed when missing. Name match allows case/space differences and initials.
+- One Aadhaar per account via `aadhaarRefs/{HMAC(SERVER_SECRET, last4|name|dob)}`.
+- Only `{ last4, verifiedName, birthYear, method, signatureVerified, consentAt, verifiedAt }` stored; audit entries exclude Aadhaar data.
+- Endpoints: `PATCH /me`, `POST /me/aadhaar/verify-qr`, `POST /me/official-request`,
+  `GET /admin/official-requests`, `POST /admin/official-requests/:id/decide`, `POST /frontdesk/walk-in`,
+  `GET /admin/users`, `PATCH /admin/users/:uid`.
