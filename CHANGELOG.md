@@ -71,3 +71,11 @@
 - `GET /invoices/me`, `GET /invoices/:id` (+ reminder history), `GET /invoices/:id/pdf`, `POST /frontdesk/bookings/:id/charges`,
   `GET /admin/invoices` (with `ageDays`), `POST /admin/invoices/:id/remind`, `POST /admin/invoices/:id/void`,
   `POST /admin/users/:uid/override-overdue`. Partial payments leave a balance; overpaying is refused.
+
+## v0.8.0 — Front desk, dashboards, reports
+- `GET /frontdesk/today`, `GET /frontdesk/lookup?code` (booking code `BK-…` or id), `POST /frontdesk/bookings/:id/check-in`
+  (confirmed + stay covers today → room occupied, nights occupied), `POST /frontdesk/bookings/:id/check-out` (optional charges → invoice,
+  room → cleaning, early check-out releases tonight onward → queue), `POST /frontdesk/bookings/:id/no-show`, `POST /frontdesk/rooms/:id/ready`.
+- One-call dashboards: `GET /dashboard/me|frontdesk|accounts|admin`.
+- Reports: `GET /reports/collections?groupBy=day|category`, `GET /reports/occupancy`, `GET /reports/payments.csv`
+  (UTF-8 BOM, CRLF, quoted, formula-injection safe).

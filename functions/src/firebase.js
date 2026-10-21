@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase-admin/app';
-import { getFirestore, FieldValue, Timestamp, FieldPath } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, Timestamp, FieldPath, AggregateField } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { config } from './config.js';
 
@@ -11,4 +11,4 @@ if (!globalThis.__firestoreConfigured) {
   globalThis.__firestoreConfigured = true;
 }
 export const auth = getAuth(app);
-export { FieldValue, Timestamp, FieldPath };
+export { FieldValue, Timestamp, FieldPath, AggregateField };

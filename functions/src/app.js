@@ -18,6 +18,8 @@ import { router as paymentsRouter } from './routes/payments.js';
 import { router as webhooksRouter } from './routes/webhooks.js';
 import { router as receiptsRouter } from './routes/receipts.js';
 import { router as invoicesRouter } from './routes/invoices.js';
+import { router as dashboardsRouter } from './routes/dashboards.js';
+import { router as reportsRouter } from './routes/reports.js';
 
 export function createApp() {
   const app = express();
@@ -70,6 +72,8 @@ export function createApp() {
   v1.use(paymentsRouter);
   v1.use(receiptsRouter);
   v1.use(invoicesRouter);
+  v1.use(dashboardsRouter);
+  v1.use(reportsRouter);
 
   // Cloud Functions strips the function name ("/api"), hosting rewrites do not.
   app.use(['/api/v1', '/v1'], v1);

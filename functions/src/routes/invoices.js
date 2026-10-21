@@ -59,26 +59,32 @@ router.get(
 // POST /frontdesk/bookings/:id/charges — { lines } creates or extends the booking's charges invoice.
 export const chargeLines = z.array(z.strictObject({ label: z.string().trim().min(2).max(120), amountPaise: zPaise.refine((n) => n > 0, 'Must be positive') })).min(1).max(20);
 
-export async function addCharges(tx, { bookingId, lines, actor }) {
-  const bookingRef = db.collection('bookings').doc(bookingId);
-  const bs = await tx.get(bookingRef);
-  if (!bs.exists) throw notFound('Booking');
-  const b = bs.data();
-  if (!['confirmed', 'checked_in', 'checked_out'].includes(b.state)) throw conflict(CODES.INVALID_STATE, `Cannot add charges to a ${b.state} booking`);
+// Read phase for extra charges on a booking; apply(lines) writes.
+export async function prepareCharges(tx, { bookingId, booking }) {
   const open = await tx.get(db.collection('invoices').where('bookingId', '==', bookingId).where('kind', '==', 'charges').where('status', '==', 'unpaid').limit(1));
   const settings = await getSettings(tx);
   const prep = open.empty ? await prepareInvoice(tx) : null;
-  if (prep) {
-    const id = prep.write({ actor, userId: b.userId, bookingId, lines, settings, kind: 'charges' });
-    return { invoiceId: id, created: true };
-  }
-  const ref = open.docs[0].ref;
-  const inv = open.docs[0].data();
-  const all = [...inv.lines, ...lines];
-  const totalPaise = all.reduce((t, l) => t + l.amountPaise, 0);
-  tx.update(ref, { lines: all, totalPaise });
-  writeAudit(tx, actor, { action: 'invoice.extend', entity: 'invoice', entityId: ref.id, before: { totalPaise: inv.totalPaise }, after: { totalPaise, added: lines } });
-  return { invoiceId: ref.id, created: false };
+  return {
+    apply({ lines, actor }) {
+      if (prep) return { invoiceId: prep.write({ actor, userId: booking.userId, bookingId, lines, settings, kind: 'charges' }), created: true };
+      const ref = open.docs[0].ref;
+      const inv = open.docs[0].data();
+      const all = [...inv.lines, ...lines];
+      const totalPaise = all.reduce((t, l) => t + l.amountPaise, 0);
+      tx.update(ref, { lines: all, totalPaise });
+      writeAudit(tx, actor, { action: 'invoice.extend', entity: 'invoice', entityId: ref.id, before: { totalPaise: inv.totalPaise }, after: { totalPaise, added: lines } });
+      return { invoiceId: ref.id, created: false };
+    },
+  };
+}
+
+export async function addCharges(tx, { bookingId, lines, actor }) {
+  const bs = await tx.get(db.collection('bookings').doc(bookingId));
+  if (!bs.exists) throw notFound('Booking');
+  const b = bs.data();
+  if (!['confirmed', 'checked_in', 'checked_out'].includes(b.state)) throw conflict(CODES.INVALID_STATE, `Cannot add charges to a ${b.state} booking`);
+  const prep = await prepareCharges(tx, { bookingId, booking: b });
+  return prep.apply({ lines, actor });
 }
 
 router.post(
