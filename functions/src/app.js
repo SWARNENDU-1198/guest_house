@@ -10,6 +10,8 @@ import { router as frontdeskRouter } from './routes/frontdesk.js';
 import { router as catalogRouter } from './routes/catalog.js';
 import { router as roomsRouter } from './routes/rooms.js';
 import { router as settingsRouter } from './routes/settings.js';
+import { router as availabilityRouter } from './routes/availability.js';
+import { router as bookingsRouter } from './routes/bookings.js';
 
 export function createApp() {
   const app = express();
@@ -53,6 +55,8 @@ export function createApp() {
   v1.use(catalogRouter);
   v1.use(roomsRouter);
   v1.use(settingsRouter);
+  v1.use(availabilityRouter);
+  v1.use(bookingsRouter);
 
   // Cloud Functions strips the function name ("/api"), hosting rewrites do not.
   app.use(['/api/v1', '/v1'], v1);

@@ -26,3 +26,13 @@
 - Rates grid, `PUT /rates/:categoryId/:roomTypeId` with `rates/{id}/history`, `GET /rates/quote` for the caller's category.
 - Free categories always price at 0. `settings/global` read (any) / patch (admin), strict schema.
 - All writes audited with before/after.
+
+## v0.4.0 — Availability and booking
+- Booking transaction: reads (user, overdue invoices, active bookings, category, room, nights, settings, rate, counter) then writes
+  (booking + one `roomNights/{roomId}_{date}` per night via `tx.create` + audit). A lost race becomes `409 ROOM_TAKEN` (`details.canQueue`).
+- Rules: Aadhaar verified, not suspended, no overdue invoice, maxNights, maxAdvanceDays, no past dates, `settings.maxActiveBookings`.
+- Free categories → `confirmed`, ₹0. Pay-later categories (`payLater: true`) → `confirmed` + invoice. Others → `held` for `holdMinutes`.
+- `GET /availability`, `GET /availability/board`, `POST /bookings`, `POST /bookings/by-type`, `GET /bookings/me`, `GET /bookings/:id`,
+  `POST /bookings/:id/cancel` (refund due per policy), `POST /admin/bookings` (override flags + reason), `PATCH /admin/bookings/:id`.
+- `Idempotency-Key` header on booking creation. Scheduled `expireHoldsJob` (every minute).
+- Race test: 50 parallel requests → exactly 1 booking.

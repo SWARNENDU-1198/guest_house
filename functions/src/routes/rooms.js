@@ -8,7 +8,7 @@ import { writeAudit, actorFrom } from '../lib/audit.js';
 import { docJSON } from '../lib/serialize.js';
 import { nightsBetween, diffDays } from '../lib/dates.js';
 import { nightRef } from '../lib/nights.js';
-import { releaseNights } from '../lib/release.js';
+import { prepareRelease } from '../lib/release.js';
 
 export const router = Router();
 
@@ -163,7 +163,8 @@ router.delete(
       const refs = nightsBetween(b.from, b.to).map((d) => nightRef(roomRef.id, d));
       const snaps = await tx.getAll(...refs);
       const mine = snaps.filter((s) => s.exists && s.data().blockId === blockRef.id).map((s) => s.data().date);
-      const release = await releaseNights(tx, { room: { id: roomRef.id, ...room.data() }, dates: mine, actor: actorFrom(req) });
+      const rel = await prepareRelease(tx, { room: { id: roomRef.id, ...room.data() }, dates: mine });
+      const release = rel.apply(actorFrom(req));
       tx.update(blockRef, { active: false, removedBy: req.user.uid, removedAt: FieldValue.serverTimestamp() });
       writeAudit(tx, actorFrom(req), { action: 'room.unblock', entity: 'room', entityId: roomRef.id, before: { blockId: blockRef.id, from: b.from, to: b.to }, after: { offers: release.offers.length } });
       return release;
