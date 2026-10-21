@@ -79,3 +79,16 @@
 - One-call dashboards: `GET /dashboard/me|frontdesk|accounts|admin`.
 - Reports: `GET /reports/collections?groupBy=day|category`, `GET /reports/occupancy`, `GET /reports/payments.csv`
   (UTF-8 BOM, CRLF, quoted, formula-injection safe).
+
+## v0.9.0 — Audit viewer and hardening
+- `GET /admin/audit` (filters actorUid/entity/entityId/action/from/to, cursor pagination; Accounts limited to payment entries),
+  `GET /admin/audit/:entity/:entityId`, `GET /admin/audit.csv`. No update/delete endpoints exist.
+- Rate limits per user: 5/min Aadhaar verify (and walk-in), 10/min booking create, 30/min general; 429 `RATE_LIMITED` with standard headers.
+- Validation sweep: every route runs zod; a missing query schema means no query params allowed, a missing body schema means empty body only.
+  A test walks the route table to prove it.
+- `trust proxy` = 1 hop; body limit 200 kB; CORS allow-list; helmet.
+- Secrets via `defineSecret` (SERVER_SECRET, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, MAIL_PASS, CRON_SECRET); `.env.example`, `.secret.local.example`.
+- `reconcilePaymentsJob` (every 15 min): asks Razorpay about orders with no verify/webhook; confirms (or auto-refunds), fails, or abandons.
+- Extra composite indexes for every query the API runs.
+- Tests: rules matrix (all collections × all roles × read/write), 50-way race, queue cancel→offer→expire→next, webhook valid/forged/duplicate,
+  reminder exactly-once, rate limits, validation, audit viewer, log redaction, secret scan, reconciliation.

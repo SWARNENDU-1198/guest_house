@@ -73,6 +73,7 @@ router.post(
 router.get(
   '/me',
   requireProfile,
+  validate(),
   ah(async (req, res) => {
     const snap = await db.collection('users').doc(req.user.uid).get();
     if (!snap.exists) throw notFound('Profile');

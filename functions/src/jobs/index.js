@@ -1,6 +1,7 @@
 import { expireHolds } from './expireHolds.js';
 import { processQueue } from './processQueue.js';
 import { sendReminders } from './sendReminders.js';
+import { reconcilePayments } from './reconcilePayments.js';
 
 export const JOBS = {
   expireHolds: async () => {
@@ -9,4 +10,5 @@ export const JOBS = {
   },
   processQueue: () => processQueue(),
   sendReminders: () => sendReminders(),
+  reconcilePayments: () => reconcilePayments(),
 };

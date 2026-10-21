@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import { config, VERSION } from './config.js';
 import { authenticate, requireProfile } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
+import { createLimiters } from './middleware/rateLimit.js';
+import { router as auditRouter } from './routes/audit.js';
 import { router as meRouter } from './routes/me.js';
 import { router as usersRouter } from './routes/users.js';
 import { router as frontdeskRouter } from './routes/frontdesk.js';
@@ -21,10 +23,11 @@ import { router as invoicesRouter } from './routes/invoices.js';
 import { router as dashboardsRouter } from './routes/dashboards.js';
 import { router as reportsRouter } from './routes/reports.js';
 
-export function createApp() {
+export function createApp({ rateLimits } = {}) {
+  const limiters = createLimiters(rateLimits === undefined ? {} : { enabled: rateLimits });
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', true);
+  app.set('trust proxy', 1); // one Google front-end hop
 
   // 1. security headers
   app.use(helmet());
@@ -53,10 +56,14 @@ export function createApp() {
   // Public routes
   v1.get('/health', (req, res) => res.json({ ok: true, version: VERSION }));
   v1.use(cronJobs);
+  v1.use('/webhooks', limiters.webhook);
   v1.use(webhooksRouter); // signed by Razorpay, no Firebase token
 
   // 4. auth for everything below
   v1.use(authenticate);
+  v1.use(limiters.general);
+  v1.use(['/me/aadhaar/verify-qr', '/frontdesk/walk-in'], limiters.aadhaar);
+  v1.post(['/bookings', '/bookings/by-type', '/admin/bookings'], limiters.booking);
   v1.use(meRouter); // /auth/bootstrap handles users without a profile itself
   v1.use(requireProfile);
   // 5. routes
@@ -74,6 +81,7 @@ export function createApp() {
   v1.use(invoicesRouter);
   v1.use(dashboardsRouter);
   v1.use(reportsRouter);
+  v1.use(auditRouter);
 
   // Cloud Functions strips the function name ("/api"), hosting rewrites do not.
   app.use(['/api/v1', '/v1'], v1);

@@ -4,21 +4,25 @@ import { badRequest } from './errors.js';
 const format = (error) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message, code: i.code }));
 
+const STRICT_EMPTY = z.strictObject({});
+const BODYLESS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 // validate({ body, query, params }) with zod schemas. Objects should be
-// z.strictObject so unknown fields are rejected. Parsed values replace the raw
-// ones: req.body, req.q (query), req.params.
-export const validate =
-  ({ body, query, params } = {}) =>
-  (req, res, next) => {
-    for (const [key, schema, target] of [
+// z.strictObject so unknown fields are rejected. A missing query schema means
+// "no query parameters allowed"; a missing body schema on POST/PATCH/PUT/DELETE
+// means "empty body only". Parsed values replace the raw ones: req.body,
+// req.q (query), req.params.
+export const validate = ({ body, query, params } = {}) => {
+  const mw = (req, res, next) => {
+    for (const [key, given, target] of [
       ['body', body, 'body'],
       ['query', query, 'q'],
       ['params', params, 'params'],
     ]) {
-      if (!schema) {
-        if (key === 'query') req.q = {};
-        continue;
-      }
+      let schema = given;
+      if (!schema && key === 'query') schema = STRICT_EMPTY;
+      if (!schema && key === 'body' && !BODYLESS.has(req.method)) schema = STRICT_EMPTY;
+      if (!schema) continue;
       const input = key === 'body' ? (req.body ?? {}) : req[key];
       const result = schema.safeParse(input);
       if (!result.success) {
@@ -28,6 +32,9 @@ export const validate =
     }
     next();
   };
+  mw.isValidator = true;
+  return mw;
+};
 
 // Common schema pieces
 export const zDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').refine((s) => {
