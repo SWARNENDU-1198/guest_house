@@ -1,4 +1,4 @@
-# Guest House API — frontend contract (v1.0)
+# Guest House API — frontend contract (v1.1)
 
 Base URL
 - Functions emulator: `http://127.0.0.1:5001/demo-guesthouse/asia-south1/api/v1`
@@ -18,6 +18,16 @@ Base URL
 
 Unknown body fields and unknown query parameters are rejected with `400 VALIDATION` (`details.issues[]`).
 
+**Sign-in policy (v1.1)** — see [`AUTH.md`](AUTH.md) for the full frontend flow. Every route except
+`/health`, `/auth/status`, `/auth/bootstrap`, `/auth/email-otp/*` and `GET /me` needs a **verified email**,
+a **verified Indian mobile** (`+91`, from Firebase SMS OTP) and, in production, a session that was opened with an
+**SMS OTP**. Cancellations, refunds, Aadhaar verification and user/role changes also need a recent **email OTP**
+(step-up, valid 10 minutes).
+
+**Display formats**: the API keeps machine formats (ISO timestamps, `YYYY-MM-DD`, paise). PDFs, emails and CSVs use
+Indian formats: `₹1,23,456.78`, `DD/MM/YYYY`, times in IST, amount in words. Document numbers follow the Indian
+financial year: `INV/26-27/000001`, `RCPT/26-27/000001`, `SLIP/…`, `CN/…` (file names use `-` instead of `/`).
+
 ### Error codes
 
 | HTTP | code | when |
@@ -29,6 +39,16 @@ Unknown body fields and unknown query parameters are rejected with `400 VALIDATI
 | 403 | `FORBIDDEN` | wrong role |
 | 403 | `SUSPENDED` | account suspended |
 | 403 | `UNVERIFIED` | Aadhaar not verified (booking, queue) |
+| 403 | `EMAIL_NOT_VERIFIED` | verify the email first (`POST /auth/email-otp/send { purpose: "verify_email" }`) |
+| 403 | `PHONE_NOT_VERIFIED` | no verified `+91` mobile on the Firebase account — link one with the SMS OTP |
+| 403 | `LOGIN_OTP_REQUIRED` | session was not opened with an SMS OTP — sign in again with the phone step |
+| 403 | `STEP_UP_REQUIRED` | sensitive action: send + verify an email OTP with `purpose: "step_up"`, then retry |
+| 422 | `OTP_INVALID` | wrong code (`details.attemptsLeft`) |
+| 422 | `OTP_EXPIRED` | code expired or already used — request a new one |
+| 429 | `OTP_LOCKED` | 5 wrong attempts — request a new code |
+| 429 | `OTP_COOLDOWN` | resend too soon (`details.retryAfterSeconds`; 60 s, max 5 per hour) |
+| 502 | `PROVIDER_ERROR` | email / Aadhaar provider failed — retry later |
+| 503 | `NOT_CONFIGURED` | Aadhaar OTP provider not enabled on this server (use the QR) |
 | 404 | `NOT_FOUND` | missing, or not yours (no existence leaks) |
 | 409 | `ROOM_TAKEN` | night already held/booked; `details.canQueue: true`, `details.dates` |
 | 409 | `ALREADY_QUEUED` | overlapping active queue entry |
@@ -41,7 +61,7 @@ Unknown body fields and unknown query parameters are rejected with `400 VALIDATI
 | 422 | `INVALID_QR` | not a valid / signed Aadhaar secure QR (`details.reason`: `NOT_NUMERIC`, `BAD_SIGNATURE`, `NAME_MISMATCH`, `NO_CERT`, …) |
 | 422/400 | `PAYMENT_FAILED` | bad checkout signature (400), payment not captured, gateway refund failure |
 | 422 | `IN_USE` | room type change on a room with booked nights |
-| 429 | `RATE_LIMITED` | 5/min Aadhaar verify, 10/min booking create, 30/min everything else (per user) |
+| 429 | `RATE_LIMITED` | 5/min Aadhaar verify, 6/min email OTP, 10/min booking create, 30/min everything else (per user) |
 | 500 | `INTERNAL` | bug — logged server side |
 
 ### Conventions
@@ -67,21 +87,31 @@ Role legend: **any** = any bootstrapped, non-suspended user.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | GET | `/health` | public | `{ ok, version }` |
-| POST | `/auth/bootstrap` | signed-in | body `{ name?, phone? }`; creates `users/{uid}` as guest, sets claims; idempotent. Then call `getIdToken(true)`. |
-| GET | `/me` | any | profile + role + verification |
-| POST | `/admin/users/:uid/role` | admin | `{ role, reason? }`; revokes tokens; audited |
+| POST | `/auth/bootstrap` | signed-in | body `{ name?, phone? }`; creates `users/{uid}` as guest, sets claims; idempotent. The phone comes from the verified Firebase token (`phone` in the body is only used when phone verification is off). Then call `getIdToken(true)`. |
+| GET | `/me` | any | `{ profile, verification }`; syncs the profile phone from the token |
+| POST | `/admin/users/:uid/role` | admin · step-up | `{ role, reason? }`; revokes tokens; audited |
 
 ### v0.2 Users, Aadhaar, officials
 | Method | Path | Role | Notes |
 |---|---|---|---|
-| PATCH | `/me` | any | `{ name?, phone? }` |
-| POST | `/me/aadhaar/verify-qr` | any | `{ qrData: "<raw scanned decimal string>", consent: true }` → `{ verified, last4, signatureVerified }` |
+| PATCH | `/me` | any | `{ name? }` (`phone` is rejected while phone verification is on: change it by verifying a new number with the SMS OTP) |
+| POST | `/me/aadhaar/verify-qr` | any · step-up | `{ qrData: "<raw scanned decimal string>", consent: true }` → `{ verified, last4, signatureVerified }` |
 | POST | `/me/official-request` | guest | `{ department, designation, officialEmail, idProofNote? }` |
 | GET | `/admin/official-requests?status=pending` | admin | paginated |
 | POST | `/admin/official-requests/:id/decide` | admin | `{ approve, reason? }` (reason required to reject); approve → role official + category official |
-| POST | `/frontdesk/walk-in` | frontdesk | `{ name, phone, email, qrData, consent: true }` → verified guest account |
+| POST | `/frontdesk/walk-in` | frontdesk | `{ name, phone, email, qrData, consent: true }` → verified guest account. `phone`: 10-digit Indian mobile (`98765 43210`, `+91…`, `0…` accepted, stored as `+919876543210`) |
 | GET | `/admin/users?role&status&categoryId&officialStatus&q` | admin | `q` = exact email or name prefix |
-| PATCH | `/admin/users/:uid` | admin | `{ categoryId?, status?: active|suspended, reason }` |
+| PATCH | `/admin/users/:uid` | admin · step-up | `{ categoryId?, status?: active|suspended, reason }` |
+
+### v1.1 Sign-in verification, email OTP, Aadhaar OTP
+| Method | Path | Role | Notes |
+|---|---|---|---|
+| GET | `/auth/status` | signed-in | `{ verification: { email, emailVerified, phone, phoneVerified, loginOtp, pending: ['email'|'phone'|'loginOtp'], policy }, bootstrapped }` — works before bootstrap |
+| POST | `/auth/email-otp/send` | signed-in | `{ purpose: "verify_email" | "step_up" }` → `{ expiresInSeconds: 600, resendAfterSeconds: 60 }`; 6-digit code by email |
+| POST | `/auth/email-otp/verify` | signed-in | `{ purpose, code }` → `{ verified, stepUpUntil, refreshToken }`. After `verify_email`, call `getIdToken(true)` so the token carries `email_verified: true` |
+| POST | `/me/aadhaar/otp/send` | any · step-up | `{ aadhaarNumber: "1234 5678 9012", consent: true }` → `{ sessionId, last4, expiresInSeconds }`; UIDAI sends the OTP to the Aadhaar-linked mobile. The number is checked (Verhoeff) and never stored. `503 NOT_CONFIGURED` when no provider is set up |
+| POST | `/me/aadhaar/otp/verify` | any | `{ sessionId, otp }` → `{ verified: true, last4, method: "otp" }`; name must match the profile; 3 attempts per session |
+| GET/PATCH | `/settings` | read any · write admin | v1.1 adds `organisation: { name, address, phone, email, gstin, sac }` (printed on receipts, invoices, emails; `gstin` validated; CGST/SGST shown when GSTIN and tax are set) |
 
 ### v0.3 Catalogue
 | Method | Path | Role | Notes |
@@ -114,7 +144,7 @@ Role legend: **any** = any bootstrapped, non-suspended user.
 | POST | `/bookings/by-type` | verified | `{ roomTypeId, checkIn, checkOut, buildingId?, payLater? }` |
 | GET | `/bookings/me` | any | newest check-in first |
 | GET | `/bookings/:id` | owner, staff | |
-| POST | `/bookings/:id/cancel` | owner, frontdesk, admin | `{ reason }` → `{ refundDuePaise, refundPercent, offeredToQueue }` |
+| POST | `/bookings/:id/cancel` | owner, frontdesk, admin · step-up | `{ reason }` → `{ refundDuePaise, refundPercent, offeredToQueue }`; emails the guest |
 | POST | `/admin/bookings` | admin, frontdesk | `{ userId, roomId? / roomTypeId?, checkIn, checkOut, payLater?, overrides: { limits?, advance?, overdue?, verification? (admin only) }, reason }` |
 | PATCH | `/admin/bookings/:id` | admin | `{ roomId?, checkIn?, checkOut?, reason }` → `{ balanceDuePaise }` |
 
@@ -139,7 +169,7 @@ Each booking has a human code `BK-000123` (front desk lookup).
 | POST | `/payments/verify` | owner | Checkout handler fields `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` → `{ status, booking, receipt }` |
 | POST | `/webhooks/razorpay` | Razorpay (signed) | configure in the Razorpay dashboard: events payment.captured, payment.failed, order.paid, refund.processed |
 | POST | `/payments/cash` | frontdesk, accounts | `{ bookingId | invoiceId, amountPaise, note? }` |
-| POST | `/payments/:id/refund` | accounts, admin | `{ amountPaise, reason }` → credit note |
+| POST | `/payments/:id/refund` | accounts, admin · step-up | `{ amountPaise, reason }` → credit note (emailed to the guest as PDF) |
 | GET | `/payments?status&from&to` | accounts, admin | |
 | GET | `/payments/me` | any | |
 | GET | `/receipts/me` | any | |

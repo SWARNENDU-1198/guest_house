@@ -3,6 +3,7 @@
 // an upcoming confirmed stay and a waiting queue entry.
 // Usage (emulator running): npm run seed:demo
 import './target.js';
+import { isMain } from './isMain.js';
 import { db, auth, FieldValue, Timestamp } from '../src/firebase.js';
 import { seedBase, ensureUser } from './seed.js';
 import { SYSTEM_ACTOR } from '../src/lib/audit.js';
@@ -49,8 +50,12 @@ export async function seedDemo() {
   await seedBase();
   await seedCatalog();
   const users = {};
+  // Demo mobiles +91 99999 000NN: on the Auth emulator any SMS code works (see the
+  // emulator log); on a real project add them as test numbers in the console.
+  let n = 0;
   const mk = async (key, email, name, role, categoryId) => {
-    users[key] = await ensureUser({ email, password: PASSWORD, name, role, categoryId, verified: true });
+    n += 1;
+    users[key] = await ensureUser({ email, password: PASSWORD, name, role, categoryId, verified: true, phone: `+9199999000${String(n).padStart(2, '0')}` });
   };
   await mk('admin', 'admin@guesthouse.test', 'Asha Admin', 'admin', 'staff');
   await auth.updateUser(users.admin, { password: PASSWORD });
@@ -60,7 +65,7 @@ export async function seedDemo() {
   await mk('guest2', 'guest2@guesthouse.test', 'Geeta Guest', 'guest', 'guest');
   await mk('official', 'official@guesthouse.test', 'Om Official', 'official', 'official');
   await mk('faculty', 'faculty@guesthouse.test', 'Fatima Faculty', 'guest', 'faculty');
-  users.newbie = await ensureUser({ email: 'newbie@guesthouse.test', password: PASSWORD, name: 'Neel Newbie', role: 'guest', categoryId: 'guest', verified: false });
+  users.newbie = await ensureUser({ email: 'newbie@guesthouse.test', password: PASSWORD, name: 'Neel Newbie', role: 'guest', categoryId: 'guest', verified: false, phone: '+919999900099' });
 
   await pastStay({ userId: users.guest, roomId: 'main-101', checkIn: D(-20), checkOut: D(-17) });
   await pastStay({ userId: users.guest2, roomId: 'main-201', checkIn: D(-12), checkOut: D(-10) });
@@ -88,7 +93,7 @@ export async function seedDemo() {
   return { users, password: PASSWORD };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { users, password } = await seedDemo();
   console.log('Demo data seeded. Accounts (password for all):', password);
   for (const k of Object.keys(users)) console.log(`  ${k.padEnd(10)} ${k === 'newbie' ? 'newbie@guesthouse.test (not Aadhaar-verified)' : `${k}@guesthouse.test`}`);

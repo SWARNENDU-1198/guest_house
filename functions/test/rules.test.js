@@ -39,7 +39,7 @@ const MATRIX = {
 let env;
 const OWNER = 'owner-uid';
 
-const ctx = (uid, role, extra = {}) => env.authenticatedContext(uid, { role, categoryId: 'guest', ...extra }).firestore();
+const ctx = (uid, role, extra = {}) => env.authenticatedContext(uid, { role, categoryId: 'guest', email_verified: true, phone_number: '+919876543210', ...extra }).firestore();
 
 describe('firestore.rules', () => {
   before(async () => {
@@ -104,6 +104,19 @@ describe('firestore.rules', () => {
 
   it('a suspended user cannot read even public catalogue data', async () => {
     await assertFails(getDoc(doc(ctx(OWNER, 'guest', { suspended: true }), 'rooms', 'r1')));
+  });
+
+  it('an unverified email or a missing / non-Indian mobile reads nothing', async () => {
+    await assertFails(getDoc(doc(ctx(OWNER, 'guest', { email_verified: false }), 'rooms', 'r1')));
+    await assertFails(getDoc(doc(ctx(OWNER, 'guest', { phone_number: null }), 'rooms', 'r1')));
+    await assertFails(getDoc(doc(ctx(OWNER, 'guest', { phone_number: '+14155550100' }), 'rooms', 'r1')));
+    await assertFails(getDoc(doc(ctx(OWNER, 'guest', { email_verified: false }), 'bookings', 'b1')));
+    await assertSucceeds(getDoc(doc(ctx(OWNER, 'guest'), 'rooms', 'r1')));
+  });
+
+  it('OTP and Aadhaar OTP sessions are backend-only', async () => {
+    await assertFails(getDoc(doc(ctx(OWNER, 'guest'), 'otps', `${OWNER}_step_up`)));
+    await assertFails(getDoc(doc(ctx('adm', 'admin'), 'aadhaarOtpSessions', 's1')));
   });
 
   it('guest cannot list all bookings, but can list their own', async () => {

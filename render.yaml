@@ -1,0 +1,40 @@
+# Render (free plan) blueprint: runs functions/server.js against the real
+# Firebase project. Values marked sync: false are entered in the Render
+# dashboard when the blueprint is applied (never committed).
+services:
+  - type: web
+    name: guesthouse-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: functions
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: GCLOUD_PROJECT
+        value: guesthouse-a43f4
+      - key: FIREBASE_SERVICE_ACCOUNT # service-account JSON (raw or base64)
+        sync: false
+      - key: SERVER_SECRET
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: MAIL_TRANSPORT
+        value: gmail
+      - key: MAIL_USER
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_PASS # Gmail app password
+        sync: false
+      # Free plan: SMS is verified once at sign-up (Spark has a small daily SMS
+      # quota); sensitive actions still need the email OTP.
+      - key: AUTH_REQUIRE_LOGIN_OTP
+        value: "false"

@@ -8,7 +8,7 @@ import { actorFrom, writeAudit } from '../lib/audit.js';
 import { docJSON, toJSON, paginate } from '../lib/serialize.js';
 import { prepareInvoice } from '../lib/invoicing.js';
 import { getSettings } from '../lib/settings.js';
-import { renderInvoice } from '../lib/pdf.js';
+import { loadInvoicePdf, sendPdf } from '../lib/pdf.js';
 import { deliverReminder } from '../jobs/sendReminders.js';
 
 export const router = Router();
@@ -52,7 +52,8 @@ router.get(
   validate({ params: z.object({ id: zId }) }),
   ah(async (req, res) => {
     const snap = await loadInvoice(req);
-    renderInvoice(res, toJSON(snap.data()));
+    const pdf = await loadInvoicePdf(snap.id);
+    sendPdf(res, pdf.number, pdf.buffer);
   }),
 );
 
@@ -123,7 +124,7 @@ router.post(
   ah(async (req, res) => {
     const ref = db.collection('invoices').doc(req.params.id);
     const reminderRef = db.collection('reminders').doc();
-    const { inv, email } = await db.runTransaction(async (tx) => {
+    const { inv, email, name } = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw notFound('Invoice');
       const i = snap.data();
@@ -131,9 +132,9 @@ router.post(
       const user = (await tx.get(db.collection('users').doc(i.userId))).data() ?? {};
       tx.create(reminderRef, { invoiceId: ref.id, userId: i.userId, channel: 'email', sentAt: FieldValue.serverTimestamp(), status: 'sending', error: null, manual: true, sentBy: req.user.uid });
       writeAudit(tx, actorFrom(req), { action: 'invoice.remind.manual', entity: 'invoice', entityId: ref.id });
-      return { inv: i, email: user.email };
+      return { inv: i, email: user.email, name: user.aadhaar?.verifiedName || user.name };
     });
-    const sent = await deliverReminder({ reminderRef, invoiceId: ref.id, inv, email });
+    const sent = await deliverReminder({ reminderRef, invoiceId: ref.id, inv, email, name });
     res.json({ sent: sent.ok, reminderId: reminderRef.id });
   }),
 );

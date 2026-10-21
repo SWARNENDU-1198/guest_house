@@ -5,6 +5,8 @@ import { badRequest, conflict, CODES } from '../middleware/errors.js';
 // Idempotency-Key support for POSTs that create bookings, payments or refunds.
 // The first request with a key claims it; a repeat returns the stored response.
 // A repeat while the first is still running gets 409. Failed requests release the key.
+const STALE_MS = 120_000; // longer than the 60 s Cloud Functions request timeout
+
 export function idempotent() {
   return async (req, res, next) => {
     const key = req.get('idempotency-key');
@@ -21,7 +23,19 @@ export function idempotent() {
         res.set('Idempotent-Replayed', 'true');
         return res.status(prev.status).json(JSON.parse(prev.body));
       }
-      return next(conflict(CODES.INVALID_STATE, 'A request with this Idempotency-Key is still being processed'));
+      // A pending key whose request died (instance crash, timeout) would block
+      // every retry forever; after STALE_MS the retry takes it over.
+      const startedAt = prev?.createdAt?.toMillis?.() ?? 0;
+      const stale = startedAt && Date.now() - startedAt > STALE_MS;
+      const taken = stale
+        ? await db.runTransaction(async (tx) => {
+            const s = await tx.get(ref);
+            if (s.data()?.state !== 'pending' || s.data().createdAt?.toMillis() !== startedAt) return false;
+            tx.set(ref, { uid: req.user?.uid ?? null, state: 'pending', createdAt: FieldValue.serverTimestamp() });
+            return true;
+          })
+        : false;
+      if (!taken) return next(conflict(CODES.INVALID_STATE, 'A request with this Idempotency-Key is still being processed'));
     }
     const json = res.json.bind(res);
     res.json = (body) => {

@@ -212,7 +212,7 @@ describe('v0.4 availability and booking', () => {
     assert.equal(r.body.booking.state, 'confirmed');
     const inv = (await db.doc(`invoices/${r.body.booking.invoiceId}`).get()).data();
     assert.equal(inv.totalPaise, 2 * 250000);
-    assert.match(inv.number, /^INV-\d{4}-000001$/);
+    assert.match(inv.number, /^INV\/\d{2}-\d{2}\/000001$/);
     const g = await makeUser();
     const r2 = await book(g, { roomId: 'r103', checkIn: D(40), checkOut: D(41), payLater: true });
     assert.equal(r2.status, 422, 'guest category cannot pay later');

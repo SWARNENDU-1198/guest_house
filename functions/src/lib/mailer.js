@@ -10,26 +10,35 @@ let transporter;
 function getTransport() {
   if (transporter) return transporter;
   const mode = process.env.MAIL_TRANSPORT || 'json';
-  if (mode === 'gmail') transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS } });
-  else if (mode === 'smtp')
+  if (mode === 'gmail') {
+    transporter = nodemailer.createTransport({ service: 'gmail', pool: true, maxConnections: 3, auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS } });
+  } else if (mode === 'smtp') {
     transporter = nodemailer.createTransport({
       host: process.env.MAIL_HOST,
       port: Number(process.env.MAIL_PORT || 587),
       secure: process.env.MAIL_SECURE === 'true',
       auth: process.env.MAIL_USER ? { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS } : undefined,
     });
-  else transporter = nodemailer.createTransport({ jsonTransport: true });
+  } else transporter = nodemailer.createTransport({ jsonTransport: true });
   return transporter;
 }
+
+// Tests swap the transport; also used after config changes.
+export function resetTransport() {
+  transporter = undefined;
+}
+
+export const mailFrom = () => process.env.MAIL_FROM || (process.env.MAIL_USER ? `Guest House <${process.env.MAIL_USER}>` : 'Guest House <no-reply@guesthouse.local>');
 
 export const appUrl = (path = '') => `${process.env.APP_URL || 'http://localhost:5173'}${path}`;
 
 // Never throws: returns { ok, error }.
-export async function sendMail({ to, subject, text, tag }) {
+// attachments: [{ filename, content: Buffer, contentType }]
+export async function sendMail({ to, subject, text, html, attachments, tag }) {
   if (!to) return { ok: false, error: 'no recipient' };
   try {
-    await getTransport().sendMail({ from: process.env.MAIL_FROM || 'Guest House <no-reply@guesthouse.local>', to, subject, text });
-    outbox.push({ to, subject, text, tag, at: new Date() });
+    await getTransport().sendMail({ from: mailFrom(), to, subject, text, html, attachments });
+    outbox.push({ to, subject, text, html, tag, attachments: (attachments ?? []).map((a) => ({ filename: a.filename, size: a.content?.length ?? 0 })), at: new Date() });
     if (outbox.length > 500) outbox.shift();
     log.info('mail.sent', { to: maskEmail(to), subject, tag });
     return { ok: true };

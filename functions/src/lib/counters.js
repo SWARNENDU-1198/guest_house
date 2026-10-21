@@ -19,4 +19,8 @@ export async function readSeq(tx, name) {
   return { value, commit: () => tx.set(ref, { value }) };
 }
 
-export const formatNumber = (prefix, year, n) => `${prefix}-${year}-${String(n).padStart(6, '0')}`;
+// Numbered per Indian financial year, e.g. INV/26-27/000001 (GST allows at most
+// 16 characters, only letters, digits, '/' and '-').
+export const formatNumber = (prefix, fy, n) => `${prefix}/${fy}/${String(n).padStart(6, '0')}`;
+// For file names and URLs
+export const fileSafe = (number) => String(number).replaceAll('/', '-');

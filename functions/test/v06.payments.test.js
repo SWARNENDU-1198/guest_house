@@ -191,9 +191,9 @@ describe('v0.6 payments and receipts', () => {
     assert.ok(res.every((r) => r.status === 201), JSON.stringify(res.map((r) => r.body)));
     const all = (await db.collection('receipts').where('kind', '==', 'receipt').get()).docs.map((d) => d.data().number).sort();
     assert.equal(new Set(all).size, all.length, 'no repeats');
-    const nums = all.map((n) => Number(n.split('-')[2]));
+    const nums = all.map((n) => Number(n.split('/')[2]));
     assert.deepEqual(nums, Array.from({ length: nums.length }, (_, i) => i + 1), 'gap-free 1..N');
-    assert.match(all[0], /^RCPT-\d{4}-000001$/);
+    assert.match(all[0], /^RCPT\/\d{2}-\d{2}\/000001$/);
   });
 
   it('cash: only front desk / accounts; amount must equal what is due; no double collection', async () => {
@@ -214,7 +214,7 @@ describe('v0.6 payments and receipts', () => {
     let r = await api().post(`${V}/payments/${pid}/refund`).set(acc.auth).send({ amountPaise: 100000, reason: 'early departure' });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.payment.status, 'partially_refunded');
-    assert.match(r.body.creditNote.number, /^CN-\d{4}-\d{6}$/);
+    assert.match(r.body.creditNote.number, /^CN\/\d{2}-\d{2}\/\d{6}$/);
     r = await api().post(`${V}/payments/${pid}/refund`).set(acc.auth).send({ amountPaise: b.amountPaise, reason: 'too much' });
     assert.equal(r.status, 422);
     assert.ok((await auditFor('payment', pid)).some((a) => a.action === 'payment.refund' && a.reason === 'early departure'));
@@ -249,7 +249,7 @@ describe('v0.6 payments and receipts', () => {
     const slip = (await db.doc(`receipts/${b.slipId}`).get()).data();
     assert.equal(slip.kind, 'slip');
     assert.equal(slip.snapshot.totalPaise, 0);
-    assert.match(slip.number, /^SLIP-\d{4}-\d{6}$/);
+    assert.match(slip.number, /^SLIP\/\d{2}-\d{2}\/\d{6}$/);
   });
 
   it('accounts lists payments; guests cannot', async () => {

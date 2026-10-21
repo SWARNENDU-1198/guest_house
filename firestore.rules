@@ -5,8 +5,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Same sign-in policy as the API: verified email and a verified Indian mobile.
     function signedIn() {
-      return request.auth != null && request.auth.token.get('suspended', false) != true;
+      return request.auth != null
+        && request.auth.token.get('suspended', false) != true
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('phone_number', '').matches('[+]91[6-9][0-9]{9}');
     }
     function role() { return request.auth.token.get('role', ''); }
     function isStaff() { return signedIn() && role() in ['frontdesk', 'accounts', 'admin']; }
@@ -49,7 +53,7 @@ service cloud.firestore {
         || (signedIn() && role() == 'accounts' && resource.data.entity == 'payment');
     }
 
-    // aadhaarRefs, counters, webhookEvents, idempotencyKeys: backend only
+    // aadhaarRefs, aadhaarOtpSessions, otps, counters, webhookEvents, idempotencyKeys: backend only
     // (covered by the default deny above).
   }
 }

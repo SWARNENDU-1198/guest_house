@@ -5,6 +5,7 @@ import { ah } from '../middleware/errors.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { validate, zDate } from '../middleware/validate.js';
 import { todayIST, diffDays } from '../lib/dates.js';
+import { dateOnlyIN, dateTimeIN } from '../lib/format.js';
 import { paymentsBetween, occupancy } from './dashboards.js';
 
 export const router = Router();
@@ -91,10 +92,10 @@ router.get(
     const name = new Map(users.map((s) => [s.id, s.data()?.name ?? '']));
     const code = new Map(bookings.map((s) => [s.id, s.data()?.code ?? '']));
     const rnum = new Map(receipts.map((s) => [s.id, s.data()?.number ?? '']));
-    const header = ['Date (IST)', 'Time (UTC)', 'Payment ID', 'Receipt', 'Guest', 'Booking', 'Invoice ID', 'Gateway', 'Method', 'Status', 'Amount (INR)', 'Refunded (INR)', 'Gateway payment ID'];
+    const header = ['Date (DD/MM/YYYY)', 'Date & time (IST)', 'Payment ID', 'Receipt', 'Guest', 'Booking', 'Invoice ID', 'Gateway', 'Method', 'Status', 'Amount (INR)', 'Refunded (INR)', 'Gateway payment ID'];
     const rows = payments.map((p) => [
-      todayIST(p.capturedAt.toMillis()),
-      p.capturedAt.toDate().toISOString(),
+      dateOnlyIN(p.capturedAt),
+      dateTimeIN(p.capturedAt),
       p.id,
       rnum.get(p.receiptId) ?? '',
       name.get(p.userId) ?? '',

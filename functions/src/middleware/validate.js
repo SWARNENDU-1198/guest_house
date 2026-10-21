@@ -47,3 +47,12 @@ export const zReason = z.string().trim().min(3).max(500);
 export const zLimit = z.coerce.number().int().min(1).max(100).default(20);
 export const zEmpty = z.strictObject({});
 export const zPage = { limit: zLimit, cursor: zId.optional() };
+
+// Indian mobile: 10 digits starting 6-9, with optional +91 / 91 / 0 prefix and
+// spaces or dashes. Normalised to E.164 (+919876543210).
+export const zPhoneIN = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/[\s-]/g, ''))
+  .refine((s) => /^(?:\+91|91|0)?[6-9]\d{9}$/.test(s), 'Enter a valid 10-digit Indian mobile number')
+  .transform((s) => `+91${s.slice(-10)}`);

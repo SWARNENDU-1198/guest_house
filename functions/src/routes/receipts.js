@@ -5,7 +5,7 @@ import { ah, notFound } from '../middleware/errors.js';
 import { isStaff } from '../middleware/requireRole.js';
 import { validate, zId, zPage } from '../middleware/validate.js';
 import { docJSON, paginate } from '../lib/serialize.js';
-import { renderReceipt } from '../lib/pdf.js';
+import { loadReceiptPdf, sendPdf } from '../lib/pdf.js';
 
 export const router = Router();
 
@@ -32,5 +32,8 @@ router.get('/receipts/:id', validate({ params: z.object({ id: zId }) }), ah(asyn
 router.get(
   '/receipts/:id/pdf',
   validate({ params: z.object({ id: zId }) }),
-  ah(async (req, res) => renderReceipt(res, (await loadReceipt(req)).data())),
+  ah(async (req, res) => {
+    const pdf = await loadReceiptPdf((await loadReceipt(req)).id);
+    sendPdf(res, pdf.number, pdf.buffer);
+  }),
 );

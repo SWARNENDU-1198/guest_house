@@ -25,6 +25,16 @@ const settingsPatch = z
       .array(z.strictObject({ hoursBefore: z.number().int().min(0).max(24 * 60), percent: z.number().int().min(0).max(100) }))
       .min(1)
       .max(10),
+    organisation: z
+      .strictObject({
+        name: z.string().trim().min(2).max(120),
+        address: z.string().trim().max(300),
+        phone: z.string().trim().max(40),
+        email: z.union([z.email().max(200), z.literal('')]),
+        gstin: z.union([z.string().trim().toUpperCase().regex(/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/, 'Invalid GSTIN'), z.literal('')]),
+        sac: z.string().trim().regex(/^\d{4,8}$/),
+      })
+      .partial(),
   })
   .partial()
   .refine((b) => Object.keys(b).length > 0, 'Nothing to update');

@@ -2,10 +2,8 @@ import { db, FieldValue, Timestamp } from '../firebase.js';
 import { SYSTEM_ACTOR, writeAudit } from '../lib/audit.js';
 import { getSettings } from '../lib/settings.js';
 import { reminderUnitMs } from '../lib/invoicing.js';
-import { sendMail, appUrl } from '../lib/mailer.js';
 import { log } from '../lib/log.js';
-
-const inr = (p) => `Rs. ${(p / 100).toFixed(2)}`;
+import { sendInvoiceReminder, sendInvoiceOverdue } from '../lib/notify.js';
 
 // Hourly (every minute in demo mode): remind owners of unpaid invoices.
 // The schedule update (remindersSent, nextReminderAt) commits in the same
@@ -46,7 +44,7 @@ export async function sendReminders({ now = Date.now(), limit = 200 } = {}) {
       if (!r) continue;
       if (r.kind === 'remind') {
         out.reminded += 1;
-        await deliverReminder({ reminderRef: r.reminderRef, invoiceId: doc.id, inv: r.inv, email: r.user.email, n: r.n });
+        await deliverReminder({ reminderRef: r.reminderRef, invoiceId: doc.id, inv: r.inv, email: r.user.email, name: r.user.aadhaar?.verifiedName || r.user.name, n: r.n });
       } else {
         out.overdue += 1;
         await notifyAccounts(doc.id, r.inv);
@@ -58,14 +56,8 @@ export async function sendReminders({ now = Date.now(), limit = 200 } = {}) {
   return out;
 }
 
-export async function deliverReminder({ reminderRef, invoiceId, inv, email, n }) {
-  const balance = inv.totalPaise - inv.paidPaise;
-  const sent = await sendMail({
-    to: email,
-    tag: 'invoice.reminder',
-    subject: `Reminder${n ? ` ${n}` : ''}: invoice ${inv.number} (${inr(balance)} due)`,
-    text: `Invoice ${inv.number} has ${inr(balance)} outstanding. Pay online: ${appUrl(`/invoices/${invoiceId}`)}`,
-  });
+export async function deliverReminder({ reminderRef, invoiceId, inv, email, name, n }) {
+  const sent = await sendInvoiceReminder({ email, name, inv, invoiceId, n });
   await reminderRef.update({ status: sent.ok ? 'sent' : 'failed', error: sent.ok ? null : String(sent.error).slice(0, 300) });
   return sent;
 }
@@ -73,11 +65,6 @@ export async function deliverReminder({ reminderRef, invoiceId, inv, email, n })
 async function notifyAccounts(invoiceId, inv) {
   const staff = await db.collection('users').where('role', 'in', ['accounts']).get();
   for (const s of staff.docs) {
-    await sendMail({
-      to: s.data().email,
-      tag: 'invoice.overdue',
-      subject: `Invoice ${inv.number} is overdue`,
-      text: `Invoice ${inv.number} (${inr(inv.totalPaise - inv.paidPaise)} due) is now overdue after ${inv.remindersSent} reminders. The guest is blocked from new bookings.`,
-    });
+    await sendInvoiceOverdue({ email: s.data().email, inv });
   }
 }

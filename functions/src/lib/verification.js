@@ -17,13 +17,14 @@ export async function checkAadhaarFree(tx, uid, decoded) {
 }
 
 // Writes phase: links the Aadhaar to uid and stores only the minimal fields.
-export function writeAadhaar(tx, { uid, decoded, refInfo, actor, consentAt, userExists = true }) {
+export function writeAadhaar(tx, { uid, decoded, refInfo, actor, consentAt, userExists = true, method = 'qr', provider = null }) {
   const aadhaar = {
     last4: decoded.last4,
     verifiedName: decoded.name,
     birthYear: decoded.birthYear,
-    method: 'qr',
-    signatureVerified: decoded.signatureVerified,
+    method,
+    ...(provider ? { provider } : {}),
+    signatureVerified: decoded.signatureVerified ?? null,
     consentAt,
     verifiedAt: FieldValue.serverTimestamp(),
   };
@@ -33,7 +34,7 @@ export function writeAadhaar(tx, { uid, decoded, refInfo, actor, consentAt, user
     action: 'user.aadhaar.verify',
     entity: 'user',
     entityId: uid,
-    after: { verified: true, method: 'qr', signatureVerified: decoded.signatureVerified },
+    after: { verified: true, method, provider, signatureVerified: decoded.signatureVerified ?? null },
   });
   return aadhaar;
 }

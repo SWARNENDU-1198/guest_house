@@ -15,7 +15,7 @@ adminJobs.post(
   requireRole('admin'),
   validate({ params: z.object({ name: z.string() }) }),
   ah(async (req, res) => {
-    const job = JOBS[req.params.name];
+    const job = Object.hasOwn(JOBS, req.params.name) ? JOBS[req.params.name] : null;
     if (!job) throw notFound('Job');
     res.json({ job: req.params.name, result: await job() });
   }),
@@ -33,7 +33,7 @@ cronJobs.post(
   ah(async (req, res) => {
     const secret = process.env.CRON_SECRET;
     if (!secret || secret.length < 16 || !sameSecret(req.get('x-cron-secret') ?? '', secret)) throw forbidden('Bad cron secret');
-    const job = JOBS[req.params.name];
+    const job = Object.hasOwn(JOBS, req.params.name) ? JOBS[req.params.name] : null;
     if (!job) throw notFound('Job');
     res.json({ job: req.params.name, result: await job() });
   }),

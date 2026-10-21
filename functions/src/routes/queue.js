@@ -14,7 +14,7 @@ import { getSettings } from '../lib/settings.js';
 import { ACTIVE_QUEUE_STATES, positionOf, queueOrder, waitingFor, notifyOffers, sweepRoomType } from '../lib/queue.js';
 import { prepareRelease } from '../lib/release.js';
 import { prepareReceipt } from '../lib/receipts.js';
-import { sendMail } from '../lib/mailer.js';
+import { sendQueueMoved, notifyBookingCreated } from '../lib/notify.js';
 import { log } from '../lib/log.js';
 
 export const router = Router();
@@ -102,7 +102,7 @@ router.post(
     const actor = actorFrom(req);
     const result = await db.runTransaction(async (tx) => {
       const { ref, entry } = await loadOwnEntry(tx, req.params.id, req.user.uid);
-      if (entry.state === 'accepted') return { bookingId: entry.offer.bookingId };
+      if (entry.state === 'accepted') return { bookingId: entry.offer.bookingId, slipId: null };
       if (entry.state !== 'offered') throw conflict(CODES.INVALID_STATE, `Entry is ${entry.state}, there is no offer to accept`);
       const bookingRef = db.collection('bookings').doc(entry.offer.bookingId);
       const bs = await tx.get(bookingRef);
@@ -112,16 +112,18 @@ router.post(
       }
       const dates = nightsBetween(b.checkIn, b.checkOut);
       const slipPrep = b.isFree ? await prepareReceipt(tx, { kind: 'slip', userId: b.userId, booking: b }) : null;
+      let slipId = null;
       if (b.isFree) {
-        slipPrep.write({ actor, bookingId: bookingRef.id, totalPaise: 0, note: 'Free stay (category rate 0)' });
+        slipId = slipPrep.write({ actor, bookingId: bookingRef.id, totalPaise: 0, note: 'Free stay (category rate 0)' }).id;
         tx.update(bookingRef, { state: 'confirmed', holdExpiresAt: null, confirmedAt: FieldValue.serverTimestamp() });
         dates.forEach((d) => tx.update(nightRef(b.roomId, d), { state: 'booked' }));
         writeAudit(tx, actor, { action: 'booking.confirm', entity: 'booking', entityId: bookingRef.id, before: { state: 'held' }, after: { state: 'confirmed' }, reason: 'free offer accepted' });
       }
       tx.update(ref, { state: 'accepted', acceptedAt: FieldValue.serverTimestamp() });
       writeAudit(tx, actor, { action: 'queue.accept', entity: 'queue', entityId: ref.id, before: { state: 'offered' }, after: { state: 'accepted' } });
-      return { bookingId: bookingRef.id };
+      return { bookingId: bookingRef.id, slipId, userId: b.userId };
     });
+    if (result.slipId) await notifyBookingCreated({ id: result.bookingId, userId: result.userId, slipId: result.slipId });
     const booking = docJSON(await db.collection('bookings').doc(result.bookingId).get());
     res.json({ booking, payNow: booking.state === 'held' });
   }),
@@ -219,12 +221,7 @@ router.post(
       writeAudit(tx, actorFrom(req), { action: 'queue.move', entity: 'queue', entityId: ref.id, before: { seq: entry.seq, position: oldPosition }, after: { seq, position: idx + 1 }, reason: req.body.reason });
       return { email: user.data()?.email, oldPosition, newPosition: idx + 1, entry };
     });
-    await sendMail({
-      to: result.email,
-      tag: 'queue.move',
-      subject: 'Your place in the room queue changed',
-      text: `Your queue position for ${result.entry.checkIn} to ${result.entry.checkOut} moved from ${result.oldPosition} to ${result.newPosition}. Reason: ${req.body.reason}`,
-    });
+    await sendQueueMoved({ email: result.email, entry: result.entry, oldPosition: result.oldPosition, newPosition: result.newPosition, reason: req.body.reason });
     const [entry] = await withPosition([docJSON(await db.collection('queue').doc(req.params.id).get())]);
     res.json({ entry });
   }),

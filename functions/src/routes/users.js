@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireStepUp } from '../lib/emailOtp.js';
 import { db, FieldValue, FieldPath } from '../firebase.js';
 import { ah, notFound, conflict, unprocessable, CODES } from '../middleware/errors.js';
 import { requireRole } from '../middleware/requireRole.js';
@@ -16,6 +17,7 @@ export const router = Router();
 router.post(
   '/admin/users/:uid/role',
   requireRole('admin'),
+  requireStepUp,
   validate({ params: z.object({ uid: zId }), body: z.strictObject({ role: z.enum(ROLES), reason: zReason.optional() }) }),
   ah(async (req, res) => {
     const { uid } = req.params;
@@ -74,6 +76,7 @@ router.get(
 router.patch(
   '/admin/users/:uid',
   requireRole('admin'),
+  requireStepUp,
   validate({
     params: z.object({ uid: zId }),
     body: z

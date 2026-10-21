@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db, auth, FieldValue } from '../firebase.js';
 import { ah, conflict, unprocessable, notFound, CODES } from '../middleware/errors.js';
 import { requireRole } from '../middleware/requireRole.js';
-import { validate, zId, zReason } from '../middleware/validate.js';
+import { validate, zId, zReason, zPhoneIN } from '../middleware/validate.js';
 import { docJSON } from '../lib/serialize.js';
 import { todayIST, nightsBetween } from '../lib/dates.js';
 import { nightRef } from '../lib/nights.js';
@@ -25,7 +25,7 @@ router.post(
   validate({
     body: z.strictObject({
       name: z.string().trim().min(1).max(100),
-      phone: z.string().trim().regex(/^\+?\d{10,13}$/),
+      phone: zPhoneIN,
       email: z.email().max(200),
       qrData: z.string().min(1).max(12000),
       consent: z.literal(true, { error: 'Guest consent is required to verify Aadhaar' }),
@@ -48,7 +48,11 @@ router.post(
       if (e.code !== 'auth/user-not-found') throw e;
     }
 
-    const authUser = await auth.createUser({ email, displayName: name, emailVerified: false });
+    // The phone goes on the Auth account so the guest can later sign in with an SMS OTP to it.
+    const authUser = await auth.createUser({ email, displayName: name, emailVerified: false, phoneNumber: phone }).catch((e) => {
+      if (e.code === 'auth/phone-number-already-exists') throw conflict(CODES.INVALID_STATE, 'An account with this mobile number already exists; ask the guest to sign in');
+      throw e;
+    });
     const ref = db.collection('users').doc(authUser.uid);
     const user = { name, email, phone, role: 'guest', categoryId: 'guest', status: 'active', officialStatus: 'none', createdBy: req.user.uid };
     try {

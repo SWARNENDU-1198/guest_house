@@ -6,7 +6,7 @@ const env = (name, fallback) => {
   return v === undefined || v === '' ? fallback : v;
 };
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 export const ROLES = ['guest', 'official', 'frontdesk', 'accounts', 'admin'];
 export const STAFF_ROLES = ['frontdesk', 'accounts', 'admin'];
@@ -25,6 +25,22 @@ export const config = {
     const s = env('SERVER_SECRET');
     if (!s) throw new Error('SERVER_SECRET is not set');
     return s;
+  },
+  // Sign-in policy (see docs/AUTH.md). Each defaults to on; set 'false' to relax.
+  get requireEmailVerified() {
+    return env('AUTH_REQUIRE_EMAIL_VERIFIED', 'true') !== 'false';
+  },
+  get requirePhone() {
+    return env('AUTH_REQUIRE_PHONE', 'true') !== 'false';
+  },
+  // Every session must come from an SMS OTP (phone sign-in or SMS second factor).
+  // Off by default on the emulator so password-only demo logins keep working.
+  get requireLoginOtp() {
+    return env('AUTH_REQUIRE_LOGIN_OTP', this.isEmulator ? 'false' : 'true') !== 'false';
+  },
+  // Email OTP before sensitive actions (Aadhaar, cancellations, refunds, role changes).
+  get requireStepUp() {
+    return env('AUTH_REQUIRE_STEP_UP', 'true') !== 'false';
   },
   get isEmulator() {
     return Boolean(process.env.FIRESTORE_EMULATOR_HOST || process.env.FUNCTIONS_EMULATOR);

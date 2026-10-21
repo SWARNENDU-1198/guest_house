@@ -133,10 +133,11 @@ describe('v0.2 users, Aadhaar verification, officials (API)', () => {
     for (const col of await db.listCollections()) {
       for (const d of (await col.get()).docs) dump.push(JSON.stringify(d.data()));
     }
-    const all = dump.join('\n') + lines.join('\n');
+    // Mobile numbers (+91 and 10 digits) are 12 digits too; they are not Aadhaar data.
+    const all = (dump.join('\n') + lines.join('\n')).replace(/\+91\d{10}\b/g, '+91<mobile>');
     assert.ok(!all.includes(`5050${ts}`), 'reference id must not be stored or logged');
     assert.ok(!all.includes(qrData.slice(0, 40)), 'raw QR must not be stored or logged');
-    assert.ok(!/\b\d{12}\b/.test(all), 'no 12-digit number anywhere');
+    assert.ok(!/\b\d{12}\b/.test(all), `no 12-digit number anywhere: ${all.match(/.{0,80}\b\d{12}\b.{0,20}/)?.[0]}`);
     const audits = (await db.collection('auditLogs').where('action', '==', 'user.aadhaar.verify').get()).docs.map((d) => d.data());
     for (const a of audits) assert.ok(!JSON.stringify(a).includes('last4'), 'audit excludes Aadhaar data');
   });

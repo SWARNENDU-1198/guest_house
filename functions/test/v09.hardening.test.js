@@ -2,6 +2,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import { api, V, freshWorld, makeUser, db, app } from './helpers.js';
 import { buildHouse } from './fixtures.js';
@@ -191,7 +192,7 @@ describe('v0.9 audit viewer and hardening', () => {
     });
 
     it('no secrets are committed: .env / .secret.local are git-ignored and source has no keys', () => {
-      const root = new URL('../../', import.meta.url).pathname;
+      const root = fileURLToPath(new URL('../../', import.meta.url));
       const ignore = readFileSync(join(root, '.gitignore'), 'utf8');
       assert.match(ignore, /^\.env$/m);
       assert.match(ignore, /^\.secret\.local$/m);

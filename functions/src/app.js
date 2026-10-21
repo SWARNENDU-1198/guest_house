@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config, VERSION } from './config.js';
-import { authenticate, requireProfile } from './middleware/auth.js';
+import { authenticate, requireProfile, requireVerifiedLogin } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 import { createLimiters } from './middleware/rateLimit.js';
 import { router as auditRouter } from './routes/audit.js';
@@ -62,10 +62,13 @@ export function createApp({ rateLimits } = {}) {
   // 4. auth for everything below
   v1.use(authenticate);
   v1.use(limiters.general);
-  v1.use(['/me/aadhaar/verify-qr', '/frontdesk/walk-in'], limiters.aadhaar);
+  v1.use(['/me/aadhaar/verify-qr', '/me/aadhaar/otp/send', '/me/aadhaar/otp/verify', '/frontdesk/walk-in'], limiters.aadhaar);
+  v1.use('/auth/email-otp', limiters.otp);
   v1.post(['/bookings', '/bookings/by-type', '/admin/bookings'], limiters.booking);
   v1.use(meRouter); // /auth/bootstrap handles users without a profile itself
   v1.use(requireProfile);
+  // verified email + Indian mobile (+ SMS OTP session in production) for everything below
+  v1.use(requireVerifiedLogin);
   // 5. routes
   v1.use(usersRouter);
   v1.use(frontdeskRouter);

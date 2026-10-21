@@ -10,6 +10,15 @@ export const DEFAULT_SETTINGS = {
   maxActiveBookings: 3,
   officialsQueuePriority: false,
   taxPercent: 0,
+  // Printed on receipts, invoices and emails. gstin/sac only show when set.
+  organisation: {
+    name: 'College Guest House',
+    address: '',
+    phone: '',
+    email: '',
+    gstin: '',
+    sac: '996311', // SAC for room accommodation services
+  },
   // Cancellation refunds: the first rule whose hoursBefore <= hours left before check-in applies.
   refundPolicy: [
     { hoursBefore: 48, percent: 100 },
@@ -20,7 +29,11 @@ export const DEFAULT_SETTINGS = {
 
 export const settingsRef = () => db.collection('settings').doc('global');
 
-export const withDefaults = (data) => ({ ...DEFAULT_SETTINGS, ...(data ?? {}) });
+export const withDefaults = (data) => ({
+  ...DEFAULT_SETTINGS,
+  ...(data ?? {}),
+  organisation: { ...DEFAULT_SETTINGS.organisation, ...(data?.organisation ?? {}) },
+});
 
 export async function getSettings(tx) {
   const snap = tx ? await tx.get(settingsRef()) : await settingsRef().get();

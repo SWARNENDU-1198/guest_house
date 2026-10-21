@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireStepUp } from '../lib/emailOtp.js';
 import { db, FieldValue, Timestamp } from '../firebase.js';
 import { ah, notFound, conflict, unprocessable, CODES, ApiError } from '../middleware/errors.js';
 import { requireRole } from '../middleware/requireRole.js';
@@ -11,6 +12,7 @@ import { createOrder, keyId, verifyCheckoutSignature, fetchPayment, refundPaymen
 import { confirmGatewayPayment, confirmCashPayment, findPaymentByOrder } from '../lib/payments.js';
 import { prepareReceipt } from '../lib/receipts.js';
 import { istMidnight, addDays } from '../lib/dates.js';
+import { notifyRefund } from '../lib/notify.js';
 
 export const router = Router();
 
@@ -137,6 +139,7 @@ router.post(
 router.post(
   '/payments/:id/refund',
   requireRole('accounts', 'admin'),
+  requireStepUp,
   idempotent(),
   validate({ params: z.object({ id: zId }), body: z.strictObject({ amountPaise: zPaise.refine((n) => n > 0, 'Must be positive'), reason: zReason }) }),
   ah(async (req, res) => {
@@ -178,6 +181,7 @@ router.post(
       const note = cn.write({ actor, bookingId: d.bookingId, paymentId: ref.id, payment: { amountPaise, method: d.method, gateway: d.gateway, gatewayPaymentId: gw?.id ?? null }, totalPaise: amountPaise, lines: [{ label: `Refund: ${reason}`, amountPaise }] });
       return { status, creditNote: note, refund };
     });
+    await notifyRefund({ userId: p.userId, amountPaise, reason, creditNoteId: out.creditNote.id });
     res.json({ payment: docJSON(await ref.get()), creditNote: out.creditNote, refund: out.refund });
   }),
 );

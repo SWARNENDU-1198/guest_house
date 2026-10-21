@@ -1,7 +1,8 @@
 import { db, FieldValue } from '../firebase.js';
 import { writeAudit } from './audit.js';
 import { readSeq, formatNumber } from './counters.js';
-import { yearIST } from './dates.js';
+import { fyIST } from './dates.js';
+import { getSettings } from './settings.js';
 
 const KINDS = {
   receipt: { prefix: 'RCPT', counter: 'receipts', title: 'Payment receipt' },
@@ -13,10 +14,11 @@ const KINDS = {
 // commits) and loads what the printed snapshot needs.
 export async function prepareReceipt(tx, { kind = 'receipt', userId, booking: prepared = null }) {
   const k = KINDS[kind];
-  const year = yearIST();
+  const year = fyIST();
   const reads = [db.collection('users').doc(userId)];
   if (prepared) reads.push(db.collection('roomTypes').doc(prepared.roomTypeId), db.collection('buildings').doc(prepared.buildingId));
   const [user, type, building] = await tx.getAll(...reads);
+  const settings = await getSettings(tx);
   const seq = await readSeq(tx, `${k.counter}-${year}`);
   const u = user.data() ?? {};
   return {
@@ -29,7 +31,8 @@ export async function prepareReceipt(tx, { kind = 'receipt', userId, booking: pr
         title: k.title,
         number: formatNumber(k.prefix, year, seq.value),
         issuedAt: issuedAt.toISOString(),
-        guest: { name: u.aadhaar?.verifiedName || u.name || '', aadhaarLast4: u.aadhaar?.last4 ?? null, email: u.email ?? null },
+        organisation: settings.organisation,
+        guest: { name: u.aadhaar?.verifiedName || u.name || '', aadhaarLast4: u.aadhaar?.last4 ?? null, email: u.email ?? null, phone: u.phone ?? null },
         booking: booking
           ? {
               id: bookingId,

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireStepUp } from '../lib/emailOtp.js';
 import { db, FieldValue } from '../firebase.js';
 import { ah, notFound, forbidden, conflict, unprocessable, CODES } from '../middleware/errors.js';
 import { requireRole, isStaff } from '../middleware/requireRole.js';
@@ -13,6 +14,7 @@ import { nightRef } from '../lib/nights.js';
 import { prepareRelease } from '../lib/release.js';
 import { getSettings } from '../lib/settings.js';
 import { notifyOffers } from '../lib/queue.js';
+import { notifyBookingCreated, notifyBookingCancelled } from '../lib/notify.js';
 
 export const router = Router();
 
@@ -31,6 +33,7 @@ router.post(
     const booking = await runBookingTx((tx) =>
       createBooking(tx, { actor: actorFrom(req), userId: req.user.uid, createdBy: req.user.uid, ...req.body }),
     );
+    await notifyBookingCreated(booking);
     res.status(201).json({ booking: bookingJSON(booking) });
   }),
 );
@@ -44,6 +47,7 @@ router.post(
     const booking = await runBookingTx((tx) =>
       createBooking(tx, { actor: actorFrom(req), userId: req.user.uid, createdBy: req.user.uid, ...req.body }),
     );
+    await notifyBookingCreated(booking);
     res.status(201).json({ booking: bookingJSON(booking) });
   }),
 );
@@ -71,6 +75,7 @@ router.get(
 // POST /bookings/:id/cancel — owner / frontdesk / admin. Frees nights (queue first), marks refund due.
 router.post(
   '/bookings/:id/cancel',
+  requireStepUp,
   validate({ params: z.object({ id: zId }), body: z.strictObject({ reason: zReason }) }),
   ah(async (req, res) => {
     const ref = db.collection('bookings').doc(req.params.id);
@@ -105,6 +110,7 @@ router.post(
       return { refund, offers: release.offers };
     });
     await notifyOffers(result.offers);
+    await notifyBookingCancelled({ bookingId: ref.id, refundDuePaise: result.refund.amountPaise, refundPercent: result.refund.percent, reason: req.body.reason });
     res.json({ booking: docJSON(await ref.get()), refundDuePaise: result.refund.amountPaise, refundPercent: result.refund.percent, offeredToQueue: result.offers.length > 0 });
   }),
 );
@@ -134,6 +140,7 @@ router.post(
     const booking = await runBookingTx((tx) =>
       createBooking(tx, { actor: actorFrom(req), createdBy: req.user.uid, overrides: clean, reason, ...rest }),
     );
+    await notifyBookingCreated(booking);
     res.status(201).json({ booking: bookingJSON(booking) });
   }),
 );

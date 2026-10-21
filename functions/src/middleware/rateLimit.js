@@ -20,11 +20,12 @@ function limiter(name, limit) {
 
 export function createLimiters({ enabled = process.env.RATE_LIMITS !== 'off' } = {}) {
   const pass = (req, res, next) => next();
-  if (!enabled) return { general: pass, aadhaar: pass, booking: pass, webhook: pass };
+  if (!enabled) return { general: pass, aadhaar: pass, booking: pass, webhook: pass, otp: pass };
   return {
     general: limiter('general', num('RATE_LIMIT_GENERAL', 30)),
     aadhaar: limiter('aadhaar', num('RATE_LIMIT_AADHAAR', 5)),
     booking: limiter('booking', num('RATE_LIMIT_BOOKING', 10)),
     webhook: limiter('webhook', num('RATE_LIMIT_WEBHOOK', 300)),
+    otp: limiter('otp', num('RATE_LIMIT_OTP', 6)),
   };
 }

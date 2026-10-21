@@ -2,6 +2,7 @@
 // Usage (emulator):  npm run seed
 // Refuses to touch a real project unless --prod is passed.
 import './target.js';
+import { isMain } from './isMain.js';
 import { db, auth, FieldValue } from '../src/firebase.js';
 import { DEFAULT_SETTINGS } from '../src/lib/settings.js';
 
@@ -22,8 +23,11 @@ export async function ensureUser({ email, password, name, role, categoryId = 'gu
   let user;
   try {
     user = await auth.getUserByEmail(email);
-  } catch {
-    user = await auth.createUser({ email, password, displayName: name, emailVerified: true });
+    await auth.updateUser(user.uid, { emailVerified: true, ...(phone ? { phoneNumber: phone } : {}) });
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') throw e;
+    // Seeded accounts start with a verified email; the phone (+91...) lets them sign in with an SMS OTP.
+    user = await auth.createUser({ email, password, displayName: name, emailVerified: true, ...(phone ? { phoneNumber: phone } : {}) });
   }
   const doc = {
     name,
@@ -46,8 +50,11 @@ export async function ensureUser({ email, password, name, role, categoryId = 'gu
 export async function seedBase() {
   const batch = db.batch();
   for (const [id, c] of Object.entries(CATEGORIES)) batch.set(db.collection('categories').doc(id), c);
-  batch.set(db.collection('settings').doc('global'), DEFAULT_SETTINGS);
   await batch.commit();
+  // Only on first run: re-seeding must not reset what an admin changed.
+  await db.collection('settings').doc('global').create(DEFAULT_SETTINGS).catch((e) => {
+    if (e.code !== 6) throw e; // ALREADY_EXISTS
+  });
   const adminUid = await ensureUser({
     email: process.env.SEED_ADMIN_EMAIL || 'admin@guesthouse.test',
     password: process.env.SEED_ADMIN_PASSWORD || 'admin123!',
@@ -55,11 +62,12 @@ export async function seedBase() {
     role: 'admin',
     categoryId: 'staff',
     verified: true,
+    phone: process.env.SEED_ADMIN_PHONE || (process.argv.includes('--prod') ? null : '+919999900000'),
   });
   return { adminUid };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const r = await seedBase();
   console.log('Seeded categories, settings/global and admin', r);
   process.exit(0);

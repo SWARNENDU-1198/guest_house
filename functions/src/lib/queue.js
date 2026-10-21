@@ -6,7 +6,7 @@ import { priceStay, rateSnapshot, rateRef } from './pricing.js';
 import { bookingCode, pickFreeRoom } from './booking.js';
 import { getSettings } from './settings.js';
 import { readSeq } from './counters.js';
-import { sendMail, appUrl } from './mailer.js';
+import { sendQueueOffer } from './notify.js';
 import { log } from './log.js';
 
 export const ACTIVE_QUEUE_STATES = ['waiting', 'offered'];
@@ -99,13 +99,7 @@ export function writeOffer(tx, { entry, ctx, room, dates, existing, seqValue, se
 // Email + (via the queue doc's onSnapshot) in-app notification. Best-effort, after commit.
 export async function notifyOffers(offers = []) {
   for (const o of offers) {
-    await sendMail({
-      to: o.email,
-      tag: 'queue.offer',
-      subject: `A room is available for ${o.checkIn} – your offer expires soon`,
-      text: `Room ${o.roomNumber} is now held for you from ${o.checkIn} to ${o.checkOut}.\n` +
-        `Accept before ${o.expiresAt}${o.amountPaise ? ` and pay Rs. ${(o.amountPaise / 100).toFixed(2)}` : ''}: ${appUrl(`/queue/${o.queueId}`)}\n`,
-    }).catch((e) => log.error('notifyOffers', { err: e.message }));
+    await sendQueueOffer(o).catch((e) => log.error('notifyOffers', { err: e.message }));
   }
 }
 

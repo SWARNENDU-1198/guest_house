@@ -6,6 +6,7 @@
 // book → pay (test mode) → receipt; cancel → queue offer; invoice → reminder;
 // admin rate change → audit entry; every dashboard loads.
 import './target.js';
+import { auth, db } from '../src/firebase.js';
 import { mockGateway } from '../src/lib/razorpay.js';
 import { todayIST, addDays } from '../src/lib/dates.js';
 
@@ -35,18 +36,38 @@ const expect = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
 
+const idt = (path) => `http://${AUTH}/identitytoolkit.googleapis.com/v1/${path}?key=fake-api-key`;
+const postJSON = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
+
+// The production sign-in: Firebase SMS OTP to the account's +91 mobile. The Auth
+// emulator does not send SMS; it exposes the codes at /emulator/v1/.../verificationCodes.
 async function signIn(email) {
-  const r = await fetch(`http://${AUTH}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password: PASSWORD, returnSecureToken: true }),
-  });
-  const j = await r.json();
-  if (!j.idToken) throw new Error(`sign-in failed for ${email}`);
-  return j.idToken;
+  const { phoneNumber, uid } = await auth.getUserByEmail(email);
+  if (!phoneNumber) {
+    const j = await postJSON(idt('accounts:signInWithPassword'), { email, password: PASSWORD, returnSecureToken: true });
+    if (!j.idToken) throw new Error(`sign-in failed for ${email}`);
+    return { token: j.idToken, uid };
+  }
+  const { sessionInfo } = await postJSON(idt('accounts:sendVerificationCode'), { phoneNumber, recaptchaToken: 'emulator' });
+  const codes = await fetch(`http://${AUTH}/emulator/v1/projects/${process.env.GCLOUD_PROJECT}/verificationCodes`).then((r) => r.json());
+  const { code } = codes.verificationCodes.filter((c) => c.sessionInfo === sessionInfo).pop();
+  const j = await postJSON(idt('accounts:signInWithPhoneNumber'), { sessionInfo, code });
+  if (!j.idToken) throw new Error(`SMS sign-in failed for ${email}`);
+  return { token: j.idToken, uid };
 }
 
-function client(token) {
+// Email OTP step-up before cancellations, refunds and role changes. On a demo-*
+// emulator project the code is readable from otps/{uid}_step_up.emulatorCode.
+async function stepUp(c) {
+  const s = await c.post('/auth/email-otp/send', { purpose: 'step_up' });
+  if (s.status === 429) return; // a code was sent moments ago and is still valid
+  if (s.status !== 200) throw new Error(`step-up send ${s.status} ${JSON.stringify(s.data)}`);
+  const code = (await db.collection('otps').doc(`${c.uid}_step_up`).get()).data()?.emulatorCode;
+  const v = await c.post('/auth/email-otp/verify', { purpose: 'step_up', code });
+  if (v.status !== 200) throw new Error(`step-up verify ${v.status} ${JSON.stringify(v.data)}`);
+}
+
+function client({ token, uid }) {
   const call = async (method, path, body) => {
     const r = await fetch(`${BASE}${path}`, {
       method,
@@ -57,7 +78,7 @@ function client(token) {
     const data = type.includes('json') ? await r.json() : Buffer.from(await r.arrayBuffer());
     return { status: r.status, data, type };
   };
-  return { get: (p) => call('GET', p), post: (p, b = {}) => call('POST', p, b), put: (p, b) => call('PUT', p, b), patch: (p, b) => call('PATCH', p, b) };
+  return { uid, get: (p) => call('GET', p), post: (p, b = {}) => call('POST', p, b), put: (p, b) => call('PUT', p, b), patch: (p, b) => call('PATCH', p, b) };
 }
 
 const who = {};
@@ -67,7 +88,7 @@ await step('health', async () => {
   expect(j.ok, 'health not ok');
   return `version ${j.version}`;
 });
-await step('sign in demo accounts (Auth emulator)', async () => {
+await step('sign in demo accounts with SMS OTP (Auth emulator)', async () => {
   for (const k of ['admin', 'frontdesk', 'accounts', 'guest', 'guest2', 'official']) who[k] = client(await signIn(`${k}@guesthouse.test`));
 });
 
@@ -100,6 +121,7 @@ await step('cancel → queue offer: the waiting guest gets the freed suite', asy
   const mine = await who.official.get('/bookings/me');
   const b = mine.data.items.find((x) => x.roomId === 'main-202' && x.state === 'confirmed');
   expect(b, 'seeded official suite booking not found');
+  await stepUp(who.official);
   const c = await who.official.post(`/bookings/${b.id}/cancel`, { reason: 'meeting moved' });
   expect(c.status === 200 && c.data.offeredToQueue, `cancel ${c.status} ${JSON.stringify(c.data)}`);
   const q = await who.guest.get('/queue/me');

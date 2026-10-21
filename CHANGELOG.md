@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.1.0 — Verified sign-in, OTPs, real email, Indian formats
+**Bug fixes**
+- Seed scripts silently did nothing on Windows (`npm run seed`, `npm run seed:demo`): the main-module check compared
+  `file://C:\…` with `file:///C:/…`. Now `scripts/isMain.js` (`pathToFileURL`).
+- The secrets hygiene test failed on Windows (`URL.pathname` → `C:\C:\…`); now `fileURLToPath`.
+- An `Idempotency-Key` whose request died mid-flight stayed `pending` forever (every retry got 409); it is taken
+  over after 2 minutes.
+- `seed.js` overwrote `settings/global` on every run (a `--prod` re-run reset the admin's settings); it now only
+  creates it once. Re-seeding an existing user now also updates email verification and phone.
+- Job routes looked up `JOBS[name]` without an own-property check (`constructor`, `toString` resolved).
+- Receipts printed raw UTC ISO timestamps; invoice/queue/reminder emails printed `YYYY-MM-DD` and `Rs. 1234.00`.
+
+**Sign-in**
+- Every route needs a verified email + verified `+91` mobile (Firebase SMS OTP), and in production a session
+  opened with an SMS OTP (phone sign-in or SMS second factor): `EMAIL_NOT_VERIFIED`, `PHONE_NOT_VERIFIED`,
+  `LOGIN_OTP_REQUIRED`. Firestore rules require the same for direct reads. `GET /auth/status`.
+- Email OTP (`/auth/email-otp/send|verify`): `verify_email` marks the Firebase email verified; `step_up` (10 min)
+  is required for cancellations, refunds, Aadhaar verification, user and role changes (`STEP_UP_REQUIRED`).
+  HMAC-stored, single-use, 5 attempts, 60 s resend, 5/hour, rate limited.
+- Phone comes from the verified token (bootstrap, `GET /me` sync); `PATCH /me` rejects `phone`. Indian mobile
+  validation/normalisation (`zPhoneIN`) for walk-ins.
+- Switches: `AUTH_REQUIRE_EMAIL_VERIFIED`, `AUTH_REQUIRE_PHONE`, `AUTH_REQUIRE_LOGIN_OTP`, `AUTH_REQUIRE_STEP_UP`.
+
+**Aadhaar**
+- Aadhaar OTP through a licensed provider (`AADHAAR_OTP_PROVIDER=cashfree|mock`): `/me/aadhaar/otp/send|verify`,
+  Verhoeff check, number never stored, single-use sessions, 3 attempts, same one-Aadhaar-per-account hash as QR.
+- UIDAI certificates: every `.cer/.crt/.pem` (DER or PEM) in `functions/config/` is loaded (key rotation).
+
+**Email and documents**
+- HTML + text emails for: OTP, booking held, booking confirmed (receipt / invoice / slip PDF attached), payment
+  received, cancellation, refund (credit note PDF), invoice reminders (invoice PDF), overdue, queue offer/move.
+- New receipt/invoice PDFs: institution header, GSTIN, SAC 996311, CGST/SGST split, `₹` (DejaVu Sans), Indian digit
+  grouping, amount in words (lakh/crore), DD/MM/YYYY, IST, masked Aadhaar, +91 phone.
+- Document numbers per Indian financial year: `INV/26-27/000001` (≤ 16 chars for GST), `RCPT/…`, `SLIP/…`, `CN/…`.
+- `settings.organisation { name, address, phone, email, gstin, sac }`, frozen onto each receipt.
+- Payments CSV: `DD/MM/YYYY` and IST date-time columns.
+
+**Ops**: demo/smoke signs in with the real SMS OTP flow on the Auth emulator and completes step-ups;
+docs `AUTH.md` (frontend flow) and `SETUP-FIREBASE.md` (Blaze go-live). Tests: 220.
+
 ## v0.1.0 — Foundation
 - Express API exported as one HTTPS function `api` (region asia-south1), base URL `/api/v1`.
 - Middleware order: helmet → CORS (frontend origins only) → JSON (raw body kept) → auth → routes → error handler.

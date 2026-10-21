@@ -25,3 +25,10 @@ export const overlaps = (aIn, aOut, bIn, bOut) => aIn < bOut && bIn < aOut;
 export const istMidnight = (date) => new Date(Date.parse(`${date}T00:00:00Z`) - IST_OFFSET_MS);
 
 export const yearIST = (now = Date.now()) => todayIST(now).slice(0, 4);
+
+// Indian financial year (April-March) in short form: 21 Oct 2026 -> '26-27'.
+export function fyIST(now = Date.now()) {
+  const [y, m] = todayIST(now).split('-').map(Number);
+  const start = m >= 4 ? y : y - 1;
+  return `${String(start % 100).padStart(2, '0')}-${String((start + 1) % 100).padStart(2, '0')}`;
+}

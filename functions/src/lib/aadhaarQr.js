@@ -11,8 +11,9 @@
 //
 // Only { last4, name, dob, birthYear, gender } ever leave this module. The photo,
 // address and raw payload are dropped as soon as decoding finishes.
-import { createHmac, createPublicKey, verify as cryptoVerify } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { createHmac, createPublicKey, verify as cryptoVerify, X509Certificate } from 'node:crypto';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync, inflateSync, inflateRawSync } from 'node:zlib';
 import { unprocessable, CODES } from '../middleware/errors.js';
@@ -25,15 +26,28 @@ const MAX_INFLATED = 256 * 1024;
 const invalid = (reason, message = 'This is not a valid Aadhaar secure QR') =>
   unprocessable(CODES.INVALID_QR, message, { reason });
 
-const defaultCertPath = fileURLToPath(new URL('../../config/uidai_cert.pem', import.meta.url));
+const defaultCertDir = fileURLToPath(new URL('../../config/', import.meta.url));
+const CERT_FILE = /\.(cer|crt|pem)$/i;
 
-let cachedKey = { path: null, key: null };
-function uidaiPublicKey() {
-  const path = process.env.UIDAI_CERT_PATH || defaultCertPath;
-  if (cachedKey.path === path) return cachedKey.key;
-  const key = existsSync(path) ? createPublicKey(readFileSync(path)) : null; // certificate or public key PEM
-  cachedKey = { path, key };
-  return key;
+// UIDAI publishes .cer files (DER or PEM) and rotates keys, so every certificate
+// or public key in the folder is loaded and a QR may match any of them.
+function loadKey(file) {
+  const buf = readFileSync(file);
+  try {
+    return new X509Certificate(buf).publicKey;
+  } catch {
+    return createPublicKey(buf); // SPKI public key PEM
+  }
+}
+
+let cachedKeys = { path: null, keys: [] };
+function uidaiPublicKeys() {
+  const path = process.env.UIDAI_CERT_PATH || defaultCertDir;
+  if (cachedKeys.path === path) return cachedKeys.keys;
+  let files = [];
+  if (existsSync(path)) files = statSync(path).isDirectory() ? readdirSync(path).filter((f) => CERT_FILE.test(f) && !f.startsWith('test_')).map((f) => join(path, f)) : [path];
+  cachedKeys = { path, keys: files.map(loadKey) };
+  return cachedKeys.keys;
 }
 
 function toBytes(qrData) {
@@ -97,10 +111,10 @@ export function decodeSecureQr(qrData) {
   if (!dob) throw invalid('BAD_DOB');
   if (!['M', 'F', 'T'].includes((gender || '').trim().toUpperCase())) throw invalid('BAD_GENDER');
 
-  const key = uidaiPublicKey();
+  const keys = uidaiPublicKeys();
   let signatureVerified = false;
-  if (key) {
-    const ok = cryptoVerify('RSA-SHA256', signedData, key, signature);
+  if (keys.length) {
+    const ok = keys.some((key) => cryptoVerify('RSA-SHA256', signedData, key, signature));
     if (!ok) throw invalid('BAD_SIGNATURE', 'The QR signature does not match UIDAI. Scan the original QR.');
     signatureVerified = true;
   } else if (process.env.AADHAAR_ALLOW_UNSIGNED !== 'true') {

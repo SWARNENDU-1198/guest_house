@@ -11,7 +11,11 @@ setGlobalOptions({ region: 'asia-south1', maxInstances: 10 });
 
 // Secrets come from Secret Manager in production and from functions/.secret.local
 // in the emulator. They are exposed to the code as process.env values.
-const SECRETS = ['SERVER_SECRET', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'MAIL_PASS', 'CRON_SECRET'].map((s) => defineSecret(s));
+// The Cashfree secrets are only bound when Aadhaar OTP uses Cashfree (functions/.env
+// is loaded before this file is evaluated at deploy time).
+const SECRET_NAMES = ['SERVER_SECRET', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'MAIL_PASS', 'CRON_SECRET'];
+if (process.env.AADHAAR_OTP_PROVIDER === 'cashfree') SECRET_NAMES.push('CASHFREE_CLIENT_SECRET', 'CASHFREE_PUBLIC_KEY');
+const SECRETS = SECRET_NAMES.map((s) => defineSecret(s));
 
 export const api = onRequest({ secrets: SECRETS, cors: false }, app);
 

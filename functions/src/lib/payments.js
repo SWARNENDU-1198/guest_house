@@ -5,7 +5,7 @@ import { nightsBetween } from './dates.js';
 import { nightRef } from './nights.js';
 import { prepareReceipt } from './receipts.js';
 import { refundPayment } from './razorpay.js';
-import { sendMail, appUrl } from './mailer.js';
+import { notifyPaymentConfirmed, notifyRefund } from './notify.js';
 import { log } from './log.js';
 
 export const SETTLED = ['captured', 'refund_pending', 'refunded', 'partially_refunded'];
@@ -158,15 +158,7 @@ async function afterConfirm(result, actor) {
   if (result.status === 'refund_needed') {
     await autoRefund(result.paymentId, actor).catch((e) => log.error('autoRefund.failed', { paymentId: result.paymentId, err: e.message }));
   }
-  if (result.status === 'confirmed') {
-    const user = (await db.collection('users').doc(result.userId).get()).data();
-    await sendMail({
-      to: user?.email,
-      tag: 'receipt',
-      subject: `Payment received – receipt ${result.receiptNumber}`,
-      text: `Thank you. Your receipt ${result.receiptNumber} is ready: ${appUrl(`/receipts/${result.receiptId}`)}`,
-    });
-  }
+  if (result.status === 'confirmed') await notifyPaymentConfirmed(result);
   return result;
 }
 
@@ -184,13 +176,7 @@ export async function autoRefund(paymentId, actor) {
     tx.update(ref, { status: 'refunded', refundedPaise: p.amountPaise, refunds: FieldValue.arrayUnion(refund) });
     writeAudit(tx, actor, { action: 'payment.refund.auto', entity: 'payment', entityId: ref.id, before: { status: 'refund_pending' }, after: { status: 'refunded', amountPaise: p.amountPaise }, reason: p.refundReason });
   });
-  const user = (await db.collection('users').doc(p.userId).get()).data();
-  await sendMail({
-    to: user?.email,
-    tag: 'refund',
-    subject: 'Your payment was refunded',
-    text: `We could not apply your payment of Rs. ${(p.amountPaise / 100).toFixed(2)} (${p.refundReason}). It has been refunded in full.`,
-  });
+  await notifyRefund({ userId: p.userId, amountPaise: p.amountPaise, reason: `we could not apply your payment: ${p.refundReason}` });
 }
 
 export function assertOwnPayment(user, p) {

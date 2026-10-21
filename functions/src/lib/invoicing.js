@@ -1,13 +1,13 @@
 import { db, FieldValue, Timestamp } from '../firebase.js';
 import { writeAudit } from './audit.js';
 import { readSeq, formatNumber } from './counters.js';
-import { yearIST } from './dates.js';
+import { fyIST } from './dates.js';
 
 export const reminderUnitMs = (settings) => (settings.reminderUnit === 'minutes' ? 60_000 : 86_400_000);
 
 // Read phase: reserves the next invoice number. Returns { write(...) } for the write phase.
 export async function prepareInvoice(tx) {
-  const year = yearIST();
+  const year = fyIST();
   const seq = await readSeq(tx, `invoices-${year}`);
   return {
     write({ actor, userId, bookingId = null, lines, settings, note = null, kind = 'stay' }) {
