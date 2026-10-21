@@ -7,6 +7,7 @@ import { nightRef } from './nights.js';
 import { priceStay, rateSnapshot, rateRef } from './pricing.js';
 import { getSettings } from './settings.js';
 import { prepareInvoice } from './invoicing.js';
+import { prepareReceipt } from './receipts.js';
 
 export const ACTIVE_STATES = ['held', 'confirmed', 'checked_in'];
 export const CHECK_IN_HOUR_IST = 12;
@@ -132,6 +133,7 @@ export async function createBooking(tx, { actor, userId, roomId, roomTypeId, bui
 
   const seq = await readSeq(tx, 'bookings');
   const invoicePrep = usePayLater ? await prepareInvoice(tx) : null;
+  const slipPrep = price.isFree ? await prepareReceipt(tx, { kind: 'slip', userId, booking: { roomTypeId: r.roomTypeId, buildingId: r.buildingId } }) : null;
   // ---- writes ----
   seq.commit();
   const bookingRef = db.collection('bookings').doc();
@@ -170,6 +172,8 @@ export async function createBooking(tx, { actor, userId, roomId, roomTypeId, bui
   );
   writeAudit(tx, actor, { action: 'booking.create', entity: 'booking', entityId: bookingRef.id, after: booking, reason });
   let invoiceId = null;
+  let slip = null;
+  if (slipPrep) slip = slipPrep.write({ booking, actor, bookingId: bookingRef.id, totalPaise: 0, note: 'Free stay (category rate 0)' });
   if (invoicePrep) {
     invoiceId = invoicePrep.write({
       actor,
@@ -179,7 +183,7 @@ export async function createBooking(tx, { actor, userId, roomId, roomTypeId, bui
       settings,
     });
   }
-  return { id: bookingRef.id, ...booking, invoiceId, holdExpiresAt: booking.holdExpiresAt };
+  return { id: bookingRef.id, ...booking, invoiceId, slipId: slip?.id ?? null, holdExpiresAt: booking.holdExpiresAt };
 }
 
 // Refund due on cancellation per settings.refundPolicy (hours before check-in at noon IST).

@@ -13,6 +13,7 @@ import { readBookerState, checkStayRules, runBookingTx } from '../lib/booking.js
 import { getSettings } from '../lib/settings.js';
 import { ACTIVE_QUEUE_STATES, positionOf, queueOrder, waitingFor, notifyOffers, sweepRoomType } from '../lib/queue.js';
 import { prepareRelease } from '../lib/release.js';
+import { prepareReceipt } from '../lib/receipts.js';
 import { sendMail } from '../lib/mailer.js';
 import { log } from '../lib/log.js';
 
@@ -110,7 +111,9 @@ router.post(
         throw unprocessable(CODES.OFFER_EXPIRED, 'This offer has expired');
       }
       const dates = nightsBetween(b.checkIn, b.checkOut);
+      const slipPrep = b.isFree ? await prepareReceipt(tx, { kind: 'slip', userId: b.userId, booking: b }) : null;
       if (b.isFree) {
+        slipPrep.write({ actor, bookingId: bookingRef.id, totalPaise: 0, note: 'Free stay (category rate 0)' });
         tx.update(bookingRef, { state: 'confirmed', holdExpiresAt: null, confirmedAt: FieldValue.serverTimestamp() });
         dates.forEach((d) => tx.update(nightRef(b.roomId, d), { state: 'booked' }));
         writeAudit(tx, actor, { action: 'booking.confirm', entity: 'booking', entityId: bookingRef.id, before: { state: 'held' }, after: { state: 'confirmed' }, reason: 'free offer accepted' });

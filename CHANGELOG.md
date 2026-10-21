@@ -48,3 +48,15 @@
 - Officials priority (`settings.officialsQueuePriority`) orders by [isOfficial desc, seq asc].
 - `POST /admin/jobs/:name/run` (admin) and `POST /internal/jobs/:name` (`X-Cron-Secret`, for a free Node host + cron).
 - Mailer (`lib/mailer.js`): JSON transport by default; SMTP or Gmail app password via env.
+
+## v0.6.0 — Payments and automatic receipts
+- `lib/razorpay.js`: Razorpay SDK when `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` are set, otherwise an in-process mock gateway.
+  Checkout signature `HMAC(key_secret, order_id|payment_id)` and webhook signature `HMAC(webhook_secret, raw body)` are always real, timing-safe.
+- `POST /payments/order` recomputes the amount from the booking's rate snapshot / invoice balance (client amounts rejected).
+- One idempotent confirmation path (`lib/payments.js`) for verify, webhook, reconciliation and cash: payment captured, booking confirmed,
+  nights booked, receipt `RCPT-YYYY-NNNNNN` (gap-free counter in the same transaction), audit — exactly once.
+- Paid after hold expiry: re-lock if the nights are still free, otherwise automatic full refund + email.
+- `POST /webhooks/razorpay` (payment.captured, order.paid, payment.failed, refund.processed), idempotent via `webhookEvents/{eventId}`.
+- `POST /payments/cash`, `POST /payments/:id/refund` (+ credit note `CN-…`), `GET /payments`, `GET /payments/me`,
+  `GET /receipts/me`, `GET /receipts/:id`, `GET /receipts/:id/pdf` (pdfkit, rendered from the frozen snapshot).
+- Free bookings get a ₹0 confirmation slip (`SLIP-…`).

@@ -14,6 +14,9 @@ import { router as availabilityRouter } from './routes/availability.js';
 import { router as bookingsRouter } from './routes/bookings.js';
 import { router as queueRouter } from './routes/queue.js';
 import { adminJobs, cronJobs } from './routes/jobs.js';
+import { router as paymentsRouter } from './routes/payments.js';
+import { router as webhooksRouter } from './routes/webhooks.js';
+import { router as receiptsRouter } from './routes/receipts.js';
 
 export function createApp() {
   const app = express();
@@ -47,6 +50,7 @@ export function createApp() {
   // Public routes
   v1.get('/health', (req, res) => res.json({ ok: true, version: VERSION }));
   v1.use(cronJobs);
+  v1.use(webhooksRouter); // signed by Razorpay, no Firebase token
 
   // 4. auth for everything below
   v1.use(authenticate);
@@ -62,6 +66,8 @@ export function createApp() {
   v1.use(bookingsRouter);
   v1.use(queueRouter);
   v1.use(adminJobs);
+  v1.use(paymentsRouter);
+  v1.use(receiptsRouter);
 
   // Cloud Functions strips the function name ("/api"), hosting rewrites do not.
   app.use(['/api/v1', '/v1'], v1);
