@@ -1,0 +1,66 @@
+# REST Client / JetBrains HTTP examples against the Functions emulator.
+# Get a token: POST to the Auth emulator (first request), copy idToken into @token.
+@base = http://127.0.0.1:5001/demo-guesthouse/asia-south1/api/v1
+@auth = http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1
+@token = paste-id-token-here
+
+### Sign in (Auth emulator)
+POST {{auth}}/accounts:signInWithPassword?key=fake-api-key
+Content-Type: application/json
+
+{ "email": "guest@guesthouse.test", "password": "demo1234!", "returnSecureToken": true }
+
+### Health
+GET {{base}}/health
+
+### Me
+GET {{base}}/me
+Authorization: Bearer {{token}}
+
+### Availability
+GET {{base}}/availability?checkIn=2026-11-10&checkOut=2026-11-12&roomTypeId=std
+Authorization: Bearer {{token}}
+
+### Book by type
+POST {{base}}/bookings/by-type
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-booking-0001
+
+{ "roomTypeId": "std", "checkIn": "2026-11-10", "checkOut": "2026-11-12" }
+
+### Create payment order
+POST {{base}}/payments/order
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "bookingId": "BOOKING_ID" }
+
+### Verify payment (fields from Razorpay Checkout handler)
+POST {{base}}/payments/verify
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "razorpay_order_id": "order_x", "razorpay_payment_id": "pay_x", "razorpay_signature": "sig" }
+
+### Cancel
+POST {{base}}/bookings/BOOKING_ID/cancel
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "reason": "plans changed" }
+
+### Join queue
+POST {{base}}/queue
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "roomTypeId": "ste", "checkIn": "2026-11-10", "checkOut": "2026-11-11" }
+
+### My dashboard
+GET {{base}}/dashboard/me
+Authorization: Bearer {{token}}
+
+### Admin: run a job now (admin token)
+POST {{base}}/admin/jobs/processQueue/run
+Authorization: Bearer {{token}}

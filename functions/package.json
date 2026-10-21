@@ -1,13 +1,17 @@
 {
   "name": "guesthouse-api",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "serve": "firebase emulators:start --project demo-guesthouse",
     "seed": "node scripts/seed.js",
     "test": "cd .. && firebase emulators:exec --project demo-guesthouse --only auth,firestore \"cd functions && npm run test:raw\"",
     "test:raw": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
-    "deploy": "cd .. && firebase deploy --only firestore:rules,firestore:indexes,functions"
+    "deploy": "cd .. && firebase deploy --only firestore:rules,firestore:indexes,functions",
+    "seed:demo": "node scripts/seedDemo.js",
+    "smoke": "node scripts/smoke.js",
+    "start": "node server.js",
+    "demo": "cd .. && firebase emulators:exec --project demo-guesthouse --only functions,auth,firestore \"cd functions && npm run seed:demo && npm run smoke\""
   },
   "dependencies": {
     "cors": "^2.8.6",

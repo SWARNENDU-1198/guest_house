@@ -92,3 +92,11 @@
 - Extra composite indexes for every query the API runs.
 - Tests: rules matrix (all collections × all roles × read/write), 50-way race, queue cancel→offer→expire→next, webhook valid/forged/duplicate,
   reminder exactly-once, rate limits, validation, audit viewer, log redaction, secret scan, reconciliation.
+
+## v1.0.0 — Demo-ready
+- `npm run seed:demo`: 2 buildings, 3 room types, 10 rooms, full rate grid, a user for every role, past stays with receipts,
+  an overdue invoice, an upcoming stay and a waiting queue entry.
+- `npm run demo`: starts the emulators, seeds, and runs `scripts/smoke.js` over real HTTP (book → pay → receipt,
+  cancel → queue offer, live reminder, audited rate change, dashboards < 1 s, security spot checks).
+- `server.js`: the same app on any Node host, with `/internal/jobs/:name` for an external cron.
+- Docs: README (setup, emulator, deploy), `docs/API.md` (frontend contract), `docs/api.http`, `docs/ASSUMPTIONS.md`.
